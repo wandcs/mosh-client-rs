@@ -100,20 +100,27 @@ and late-packet rejection.
 
 ### Phase 3B: Collect external maintenance evidence
 
-- [ ] Survey MoshCatty, `dart_mosh`, and `mosh-go` pull requests, issues,
+- [x] Survey MoshCatty, `dart_mosh`, and `mosh-go` pull requests, issues,
   releases, and important commits from the latest 24 months. Extend to the full
   history when recent activity is too limited to reveal maintenance patterns.
-- [ ] Classify the changes by protocol compatibility, synchronization and
+- [x] Classify the changes by protocol compatibility, synchronization and
   recovery, terminal behavior, lifecycle and cancellation, performance and
   resource use, testing, and maintenance-only work.
-- [ ] For relevant historical bugs, record the root cause, affected path,
+- [x] For relevant historical bugs, record the root cause, affected path,
   observable failure, fix pattern, regression-test layer, applicability to this
   crate, and confidence. Record recurring cross-project patterns separately
   from project-specific behavior.
-- [ ] Treat third-party code as a source of hypotheses and design alternatives.
+- [x] Treat third-party code as a source of hypotheses and design alternatives.
   Derive applicable tests independently, verify wire rules with permitted
   primary evidence and stock fixtures, and update
   [provenance](provenance.md) for every nontrivial compatibility rule.
+
+Phase 3B is complete as of 2026-08-30. The
+[external maintenance evidence](external-maintenance-evidence.md) covers each
+repository's full default-branch, tracker, and release history, separates
+accepted facts from low-confidence reports, and defines independent test
+candidates. No new wire rule was accepted, so no protocol-provenance entry was
+added.
 
 ### Phase 3C: Review necessity before code structure
 

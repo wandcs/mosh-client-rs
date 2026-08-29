@@ -8,6 +8,11 @@ This survey compares public architecture, API, README, and license information
 from representative Mosh clients and terminal libraries. It informs project
 boundaries and embedding choices; it does not define wire behavior.
 
+The later [external maintenance evidence](external-maintenance-evidence.md)
+audits the complete default-branch, tracker, and release history of MoshCatty,
+`dart_mosh`, and `mosh-go`. Keep architectural comparisons here and historical
+failure evidence there.
+
 The project may inspect third-party implementations, including GPL-covered
 implementations, to compare architecture and tradeoffs. It does not copy or
 translate their source, comments, tests, file organization, or distinctive
