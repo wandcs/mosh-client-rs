@@ -6,13 +6,15 @@ use tokio::task::JoinHandle;
 
 use zeroize::Zeroize as _;
 
+use crate::test_support::{DetachedProcessGuard, assert_stock_1_4_0, find_detached_pid};
+
 #[path = "stock/recovery.rs"]
 mod recovery;
 
 #[test]
 #[ignore = "requires a locally installed stock mosh-server 1.4.0"]
 fn stock_1_4_0_public_session_drives_an_interactive_shell() {
-    assert_stock_server_version();
+    assert_stock_1_4_0("mosh-server");
     let (bootstrap, mut server) = start_stock_server("60400:60419");
 
     let runtime = stock_runtime();
@@ -77,7 +79,7 @@ async fn wait_for_public_screen(
 #[test]
 #[ignore = "requires a locally installed stock mosh-server 1.4.0"]
 fn stock_1_4_0_private_session_resizes_the_remote_pty_and_repaints() {
-    assert_stock_server_version();
+    assert_stock_1_4_0("mosh-server");
     let (bootstrap, mut server) = start_stock_server("60560:60579");
 
     let runtime = stock_runtime();
@@ -141,7 +143,7 @@ fn stock_1_4_0_private_session_resizes_the_remote_pty_and_repaints() {
 #[test]
 #[ignore = "requires local stock mosh-server 1.4.0, tmux, and Vim"]
 fn stock_1_4_0_private_session_supports_tmux_vim_and_full_screen_repaint() {
-    assert_stock_server_version();
+    assert_stock_1_4_0("mosh-server");
     assert_program_available("tmux", "-V");
     assert_program_available("vim", "--version");
     let (bootstrap, mut server) = start_stock_server("60420:60439");
@@ -300,7 +302,7 @@ async fn exercise_vim(
 #[test]
 #[ignore = "requires a locally installed stock mosh-server 1.4.0"]
 fn stock_1_4_0_private_session_preserves_sustained_io_under_output_backpressure() {
-    assert_stock_server_version();
+    assert_stock_1_4_0("mosh-server");
     let (bootstrap, mut server) = start_stock_server("60440:60459");
 
     let runtime = stock_runtime();
@@ -551,121 +553,6 @@ fn assert_program_available(program: &str, version_argument: &str) {
         .status()
         .unwrap_or_else(|error| panic!("fixture requires local {program}: {error}"));
     assert!(status.success(), "fixture requires local {program}");
-}
-
-fn assert_stock_server_version() {
-    let version = Command::new("mosh-server")
-        .arg("--version")
-        .output()
-        .unwrap_or_else(|error| panic!("failed to run local stock server: {error}"));
-    assert!(
-        version.status.success()
-            && (version.stdout.windows(10).any(|part| part == b"mosh 1.4.0")
-                || version.stderr.windows(10).any(|part| part == b"mosh 1.4.0")),
-        "fixture requires stock mosh-server 1.4.0"
-    );
-}
-
-fn find_detached_pid(output: &std::process::Output) -> Option<u32> {
-    find_pid(&output.stdout).or_else(|| find_pid(&output.stderr))
-}
-
-fn find_pid(bytes: &[u8]) -> Option<u32> {
-    const MARKER: &[u8] = b"pid = ";
-    let start = bytes
-        .windows(MARKER.len())
-        .position(|window| window == MARKER)?
-        + MARKER.len();
-    let digit_count = bytes[start..]
-        .iter()
-        .take_while(|byte| byte.is_ascii_digit())
-        .count();
-    let digits = &bytes[start..start + digit_count];
-    if digits.is_empty() {
-        return None;
-    }
-    let pid = digits.iter().try_fold(0_u32, |value, byte| {
-        value.checked_mul(10)?.checked_add(u32::from(*byte - b'0'))
-    })?;
-    (pid > 1).then_some(pid)
-}
-
-struct DetachedProcessGuard {
-    pid: u32,
-    terminated: bool,
-}
-
-impl DetachedProcessGuard {
-    const fn new(pid: u32) -> Self {
-        Self {
-            pid,
-            terminated: false,
-        }
-    }
-
-    fn signal_terminate(&self) -> bool {
-        self.has_exited()
-            || Command::new("kill")
-                .arg("-TERM")
-                .arg(self.pid.to_string())
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .status()
-                .is_ok_and(|status| status.success())
-    }
-
-    fn has_exited(&self) -> bool {
-        use std::path::Path;
-
-        !Path::new(&format!("/proc/{}", self.pid)).exists()
-    }
-
-    fn terminate(&mut self) -> bool {
-        use std::path::Path;
-        use std::thread;
-
-        if self.terminated || !Path::new(&format!("/proc/{}", self.pid)).exists() {
-            self.terminated = true;
-            return true;
-        }
-        if Command::new("kill")
-            .arg("-TERM")
-            .arg(self.pid.to_string())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .is_err()
-        {
-            return false;
-        }
-        for _ in 0..100 {
-            if !Path::new(&format!("/proc/{}", self.pid)).exists() {
-                self.terminated = true;
-                return true;
-            }
-            thread::sleep(Duration::from_millis(20));
-        }
-        let _ = Command::new("kill")
-            .arg("-KILL")
-            .arg(self.pid.to_string())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status();
-        for _ in 0..150 {
-            if !Path::new(&format!("/proc/{}", self.pid)).exists() {
-                self.terminated = true;
-                return true;
-            }
-            thread::sleep(Duration::from_millis(20));
-        }
-        false
-    }
-}
-
-impl Drop for DetachedProcessGuard {
-    fn drop(&mut self) {
-        let _ = self.terminate();
-    }
 }
 
 struct TmuxServerGuard {

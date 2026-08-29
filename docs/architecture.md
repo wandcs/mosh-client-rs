@@ -161,10 +161,11 @@ cannot mutate it accidentally.
 
 The packet receiver authenticates a datagram and validates the fragment
 envelope before reassembly sees it. One receiver-owned reassembler groups
-fragments by identifier, retains a small bounded set of incomplete
-instructions, and emits bytes only after every fragment from zero through the
-declared final number is present. Only a complete compressed instruction may
-cross into zlib and Protocol Buffers decoding.
+fragments by identifier, retains one incomplete instruction, and emits bytes
+only after every fragment from zero through the declared final number is
+present. Only a complete compressed instruction may cross into zlib and
+Protocol Buffers decoding. A single-slot representation enforces the one-message
+policy without a second identifier map or aggregate byte counter.
 
 Exact duplicates are idempotent. Conflicting bytes or final markers discard
 that identifier rather than exposing a partially assembled instruction. A
@@ -386,6 +387,7 @@ src/
   session.rs             production driver, commands, events and cleanup
   session/
     client_history.rs    bounded client operations and SSP checkpoints
+  test_support.rs        Linux-only shared stock fixture process support
 
 tests/
   support/               deterministic bounded network and safe fixtures

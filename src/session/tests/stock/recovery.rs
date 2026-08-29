@@ -20,7 +20,7 @@ fn stock_1_4_0_prediction_reduces_measured_interactive_echo_latency() {
         ("60540:60549", "60550:60559", 80),
     ];
 
-    assert_stock_server_version();
+    assert_stock_1_4_0("mosh-server");
     let runtime = stock_runtime();
 
     for (baseline_ports, prediction_ports, one_way_delay_ms) in CASES {
@@ -123,7 +123,7 @@ fn median_millis(samples: &[Duration]) -> u128 {
 #[test]
 #[ignore = "requires a locally installed stock mosh-server 1.4.0"]
 fn stock_1_4_0_private_session_recovers_after_outage_and_source_port_change() {
-    assert_stock_server_version();
+    assert_stock_1_4_0("mosh-server");
     let (bootstrap, mut server) = start_stock_server("60460:60479");
     let server_addr = bootstrap.server_addr();
 
@@ -222,7 +222,7 @@ fn stock_1_4_0_private_session_recovers_after_outage_and_source_port_change() {
 #[test]
 #[ignore = "requires a locally installed stock mosh-server 1.4.0"]
 fn stock_1_4_0_private_session_remains_controllable_after_server_disappears() {
-    assert_stock_server_version();
+    assert_stock_1_4_0("mosh-server");
     let (bootstrap, mut server) = start_stock_server("60480:60499");
 
     let runtime = stock_runtime();
@@ -270,7 +270,7 @@ fn stock_1_4_0_private_session_remains_controllable_after_server_disappears() {
 #[test]
 #[ignore = "requires a locally installed stock mosh-server 1.4.0"]
 fn stock_1_4_0_public_sessions_isolate_packets_state_and_lifecycle() {
-    assert_stock_server_version();
+    assert_stock_1_4_0("mosh-server");
     let (bootstrap_a, mut server_a) = start_stock_server("60600:60619");
     let (bootstrap_b, mut server_b) = start_stock_server("60620:60639");
     let (bootstrap_replacement, mut server_replacement) = start_stock_server("60640:60659");

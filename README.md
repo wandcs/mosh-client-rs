@@ -26,8 +26,8 @@ still converges to a stock-server marker.
 The Phase 2 viability gate found no material terminal-correctness or recovery
 deficit within the declared local compatibility scope. Public contract tests
 cover validation, owner shutdown, state, and idempotent cancellation; a stock
-1.4.0 interactive fixture now drives the same public API. Concurrent-Session,
-fuzz, dependency, physical-network, and LeanTTY gates remain open. The crate
+1.4.0 interactive fixture now drives the same public API. Fuzz, dependency,
+physical-network, and LeanTTY gates remain open. The crate
 stays unpublished until the later interoperability and security gates in
 [the roadmap](docs/roadmap.md) pass.
 

@@ -152,28 +152,29 @@ overlapping fragment messages remain behind their evidence gates.
 
 ### Phase 3D: Refactor only the retained design
 
-Phase 3D is in progress. The completed batches in the
-[refactoring log](refactoring-log.md) unified private Session closure, moved the
-bounded client operation history to its real ownership boundary, and retained
-the existing terminal, repaint, and measured-prediction boundaries after
-rejecting unmeasured allocation-driven redesign. The next review covers parser,
-fragmentation, and timing only where it finds a concrete simplification; later
-mechanisms remain unauthorized until that batch is complete.
+Phase 3D is complete as of 2026-08-30. The
+[refactoring log](refactoring-log.md) records each accepted change and retained
+boundary. The work unified private Session closure, isolated client operation
+history, kept terminal and measured-prediction ownership unchanged, simplified
+single-message reassembly, made scheduler generation failure atomic, and
+consolidated duplicated Linux stock-fixture support. Parser, packet, codec,
+terminal, recovery, and public API boundaries remain unchanged where review
+found no lower-cost design.
 
-- [ ] Review retained code for mixed ownership, mixed responsibilities, long or
+- [x] Review retained code for mixed ownership, mixed responsibilities, long or
   deeply nested functions, duplicated logic, redundant state, avoidable clones
   and allocations, oversized error or state variants, and test-helper reuse.
   Split code at ownership, lifecycle, invariant, or reusable-test boundaries;
   line count alone does not justify a new abstraction.
-- [ ] Record each accepted refactor with its expected simplification, preserved
+- [x] Record each accepted refactor with its expected simplification, preserved
   behavior, smallest characterization or regression test, verification path,
   and rollback. Reject changes whose maintenance cost exceeds their measured
   value.
-- [ ] Apply accepted changes in this order: Session lifecycle, cancellation,
+- [x] Apply accepted changes in this order: Session lifecycle, cancellation,
   and concurrent ownership; SSP, `ClientHistory`, and terminal snapshots;
   terminal, repaint, and prediction; parser, fragmentation, and timing only
   where the review found a concrete need; then shared test support.
-- [ ] Keep each batch reviewable and run its focused tests and smallest relevant
+- [x] Keep each batch reviewable and run its focused tests and smallest relevant
   stock fixture before starting the next batch.
 
 ### Phase 3E: Rebuild tests around retained risks

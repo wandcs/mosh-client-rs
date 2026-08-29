@@ -102,3 +102,50 @@ reviewable and reversible.
   not merge terminal snapshots with SSP, remove the painted snapshot, expose
   cells, add a renderer trait, broaden prediction, or redesign the bounded
   input path without allocation or compatibility evidence.
+
+## 3D-4: Complete the retained protocol and test-support review
+
+- **Status:** implemented and verified on 2026-08-30
+- **Baseline and rollback:** Phase 3D-3 revision `b778f6b`
+- **Review:** bootstrap, authenticated packet, replay, zlib, Protocol Buffers,
+  RTT, timestamp, pacing, retransmission, heartbeat, and recovery boundaries
+  already have one owner and explicit limits. Their remaining copies and
+  allocations serve in-place cryptography, owned messages, or bounded codec
+  output, so this review retains them.
+- **Problems:** the reassembler represented one permitted incomplete message
+  with an outer identifier map and a duplicate total-byte counter. The send
+  scheduler wrote pending state before detecting generation exhaustion, so an
+  error could leave an uncommitted local change or erase pending work. Linux
+  stock fixtures also repeated the same version check, public test key, detached
+  PID parser, and process cleanup in packet, instruction, and Session modules.
+- **Changes:** store one optional incomplete instruction with its identifier
+  and derive total bytes from that owner. Remove the unreachable aggregate
+  storage error and duplicate constants while preserving the same one-message,
+  1 MiB limits. Compute the scheduler's next generation before mutating pending
+  or committed state, matching the synchronization plan/commit pattern.
+  Consolidate only the identical Linux stock version, key, detached-process,
+  and PID support in a test-only crate module.
+- **Expected simplification:** make the one-message policy structural, remove
+  one map, one mirrored byte count, repeated lookups, and one unreachable error
+  branch. All scheduler failures now precede state mutation. Seven stock
+  version checks and two detached-process implementations now have one owner.
+- **Preserved behavior:** fragment envelope and order; one incomplete message;
+  single-fragment completion beside that message; exact duplicate handling;
+  conflict discard; failure atomicity; 749-fragment, 1 MiB, and ten-second
+  limits; monotonic deadlines; pacing; retransmission; heartbeat; and public or
+  wire contracts. Stock fixtures retain their commands, port ranges, process
+  groups, timeouts, and cleanup behavior.
+- **Characterization:** a new fragment test proves that a complete one-fragment
+  instruction neither displaces nor joins the retained incomplete identifier.
+  A red-then-green timing test proves generation exhaustion preserves both a
+  newly noted change and a due send plan.
+- **Verification:** focused fragment and timing suites, the stock reverse-order
+  multi-fragment fixture, stock client-input fixture, stock
+  outage/source-port recovery fixture, public two-Session isolation fixture,
+  and the complete formatting, Clippy, and test suite.
+- **Rejected changes:** do not merge parser layers, replace Prost or zlib,
+  change conflict or identifier-reuse policy, accept overlapping incomplete
+  messages, combine RTT and scheduler state, add timer cancellation, or change
+  local UDP error and reachability policy. Do not create a generic stock-server
+  harness or merge different foreground process-group, virtual-network, and
+  Session-projection helpers merely because all are test code.

@@ -1,4 +1,5 @@
 use super::*;
+use crate::limits::MAX_COMPRESSED_INSTRUCTION_BYTES;
 
 fn observed_fragment(identifier: u64, number: u16, is_final: bool, body: &[u8]) -> Fragment<'_> {
     Fragment {
@@ -188,20 +189,15 @@ fn missing_fragments_expire_at_the_fixed_first_fragment_deadline() {
 #[test]
 fn incomplete_instruction_and_fragment_count_limits_fail_before_mutation() {
     let mut reassembler = FragmentReassembler::new(0);
-    for identifier in 0..MAX_INCOMPLETE_INSTRUCTIONS {
-        reassembler
-            .push(
-                0,
-                observed_fragment(u64::try_from(identifier).unwrap(), 0, false, b"x"),
-            )
-            .unwrap();
-    }
+    reassembler
+        .push(0, observed_fragment(0, 0, false, b"x"))
+        .unwrap();
     let stored = reassembler.stored_bytes();
     assert_eq!(
         reassembler.push(0, observed_fragment(99, 0, false, b"x")),
         Err(ReassemblyError::TooManyIncompleteInstructions)
     );
-    assert_eq!(reassembler.incomplete_count(), MAX_INCOMPLETE_INSTRUCTIONS);
+    assert_eq!(reassembler.incomplete_count(), 1);
     assert_eq!(reassembler.stored_bytes(), stored);
     assert_eq!(
         reassembler.push(
@@ -216,6 +212,33 @@ fn incomplete_instruction_and_fragment_count_limits_fail_before_mutation() {
         Err(ReassemblyError::FragmentNumberOutOfRange)
     );
     assert_eq!(reassembler.stored_bytes(), stored);
+}
+
+#[test]
+fn one_complete_fragment_does_not_displace_the_incomplete_message() {
+    let mut reassembler = FragmentReassembler::new(0);
+    assert_eq!(
+        reassembler
+            .push(0, observed_fragment(1, 0, false, b"a"))
+            .unwrap(),
+        ReassemblyOutcome::Pending
+    );
+
+    assert_eq!(
+        reassembler
+            .push(1, observed_fragment(2, 0, true, b"complete"))
+            .unwrap(),
+        ReassemblyOutcome::Complete(b"complete".to_vec())
+    );
+    assert_eq!(reassembler.incomplete_count(), 1);
+    assert_eq!(reassembler.stored_bytes(), 1);
+
+    assert_eq!(
+        reassembler
+            .push(2, observed_fragment(1, 1, true, b"b"))
+            .unwrap(),
+        ReassemblyOutcome::Complete(b"ab".to_vec())
+    );
 }
 
 #[test]
@@ -234,8 +257,7 @@ fn byte_limits_fail_without_retaining_the_rejected_fragment() {
     );
     assert_eq!(instruction_limit.stored_bytes(), stored);
 
-    assert_eq!(MAX_TOTAL_INCOMPLETE_FRAGMENT_BYTES, 1024 * 1024);
-    assert_eq!(MAX_INCOMPLETE_INSTRUCTIONS, 1);
+    assert_eq!(MAX_COMPRESSED_INSTRUCTION_BYTES, 1024 * 1024);
 }
 
 #[test]

@@ -277,8 +277,9 @@ impl SendScheduler {
     pub(crate) fn note_local_change(&mut self, now_ms: u64) -> Result<(), TimingError> {
         self.observe_time(now_ms)?;
         if self.local_change_at_ms.is_none() {
+            let next_generation = self.next_generation()?;
             self.local_change_at_ms = Some(now_ms);
-            self.advance_generation()?;
+            self.generation = next_generation;
         }
         Ok(())
     }
@@ -286,8 +287,9 @@ impl SendScheduler {
     pub(crate) fn note_acknowledgement_needed(&mut self, now_ms: u64) -> Result<(), TimingError> {
         self.observe_time(now_ms)?;
         if self.acknowledgement_at_ms.is_none() {
+            let next_generation = self.next_generation()?;
             self.acknowledgement_at_ms = Some(now_ms);
-            self.advance_generation()?;
+            self.generation = next_generation;
         }
         Ok(())
     }
@@ -354,10 +356,12 @@ impl SendScheduler {
         if plan.generation != self.generation || plan.planned_at_ms != self.last_observed_ms {
             return Err(TimingError::StalePlan);
         }
+        let next_generation = self.next_generation()?;
         self.local_change_at_ms = None;
         self.acknowledgement_at_ms = None;
         self.last_send_ms = Some(plan.planned_at_ms);
-        self.advance_generation()
+        self.generation = next_generation;
+        Ok(())
     }
 
     fn local_change_due(&self, frame_interval_ms: u64) -> Result<Option<u64>, TimingError> {
@@ -382,12 +386,10 @@ impl SendScheduler {
         Ok(())
     }
 
-    fn advance_generation(&mut self) -> Result<(), TimingError> {
-        self.generation = self
-            .generation
+    fn next_generation(&self) -> Result<u64, TimingError> {
+        self.generation
             .checked_add(1)
-            .ok_or(TimingError::GenerationExhausted)?;
-        Ok(())
+            .ok_or(TimingError::GenerationExhausted)
     }
 }
 

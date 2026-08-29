@@ -1,6 +1,12 @@
 use super::super::*;
 
 #[cfg(target_os = "linux")]
+use crate::test_support::{
+    DetachedProcessGuard, STOCK_1_4_0_KEY_BYTES, STOCK_1_4_0_KEY_TEXT, assert_stock_1_4_0,
+    find_detached_pid,
+};
+
+#[cfg(target_os = "linux")]
 #[test]
 #[ignore = "requires a locally installed stock mosh-client 1.4.0 and util-linux script"]
 fn stock_1_4_0_client_packet_opens_with_the_fixed_public_test_key() {
@@ -9,22 +15,7 @@ fn stock_1_4_0_client_packet_opens_with_the_fixed_public_test_key() {
     use std::process::{Command, Stdio};
     use std::time::Duration;
 
-    const PUBLIC_TEST_KEY_TEXT: &str = "4NeCCgvZFe2RnPgrcU1PQw";
-    const PUBLIC_TEST_KEY_BYTES: [u8; 16] = [
-        0xe0, 0xd7, 0x82, 0x0a, 0x0b, 0xd9, 0x15, 0xed, 0x91, 0x9c, 0xf8, 0x2b, 0x71, 0x4d, 0x4f,
-        0x43,
-    ];
-
-    let version = Command::new("mosh-client")
-        .arg("--version")
-        .output()
-        .unwrap_or_else(|error| panic!("failed to run local stock client: {error}"));
-    assert!(
-        version.status.success()
-            && (version.stdout.windows(10).any(|part| part == b"mosh 1.4.0")
-                || version.stderr.windows(10).any(|part| part == b"mosh 1.4.0")),
-        "fixture requires stock mosh-client 1.4.0"
-    );
+    assert_stock_1_4_0("mosh-client");
 
     let socket = UdpSocket::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
     socket
@@ -32,7 +23,7 @@ fn stock_1_4_0_client_packet_opens_with_the_fixed_public_test_key() {
         .unwrap();
     let port = socket.local_addr().unwrap().port();
     let command = format!(
-        "stty rows 24 cols 80; env TERM=xterm-256color LANG=C.UTF-8 MOSH_KEY={PUBLIC_TEST_KEY_TEXT} mosh-client 127.0.0.1 {port}"
+        "stty rows 24 cols 80; env TERM=xterm-256color LANG=C.UTF-8 MOSH_KEY={STOCK_1_4_0_KEY_TEXT} mosh-client 127.0.0.1 {port}"
     );
     let child = Command::new("script")
         .args(["-qfec", &command, "/dev/null"])
@@ -50,7 +41,7 @@ fn stock_1_4_0_client_packet_opens_with_the_fixed_public_test_key() {
         .unwrap_or_else(|error| panic!("stock client did not send a datagram: {error}"));
     assert_eq!(peer.ip(), Ipv4Addr::LOCALHOST);
 
-    let key = SessionKey::new(PUBLIC_TEST_KEY_BYTES);
+    let key = SessionKey::new(STOCK_1_4_0_KEY_BYTES);
     let mut receiver = PacketReceiver::new(&key, Direction::ClientToServer);
     let packet = receiver
         .open(&mut datagram[..length])
@@ -77,16 +68,7 @@ fn stock_1_4_0_server_accepts_the_project_initial_packet() {
     use crate::limits::MIN_RETRANSMISSION_TIMEOUT_MS;
     use crate::synchronization::{AcknowledgementDisposition, SynchronizationState};
 
-    let version = Command::new("mosh-server")
-        .arg("--version")
-        .output()
-        .unwrap_or_else(|error| panic!("failed to run local stock server: {error}"));
-    assert!(
-        version.status.success()
-            && (version.stdout.windows(10).any(|part| part == b"mosh 1.4.0")
-                || version.stderr.windows(10).any(|part| part == b"mosh 1.4.0")),
-        "fixture requires stock mosh-server 1.4.0"
-    );
+    assert_stock_1_4_0("mosh-server");
 
     let mut output = Command::new("mosh-server")
         .args([
@@ -190,16 +172,7 @@ fn stock_1_4_0_echo_acknowledges_the_controlled_input_operation() {
     use crate::instruction::{ClientOperation, TransportInstruction, encode_client_difference};
     use crate::terminal::TerminalDifference;
 
-    let version = Command::new("mosh-server")
-        .arg("--version")
-        .output()
-        .unwrap_or_else(|error| panic!("failed to run local stock server: {error}"));
-    assert!(
-        version.status.success()
-            && (version.stdout.windows(10).any(|part| part == b"mosh 1.4.0")
-                || version.stderr.windows(10).any(|part| part == b"mosh 1.4.0")),
-        "fixture requires stock mosh-server 1.4.0"
-    );
+    assert_stock_1_4_0("mosh-server");
 
     let mut output = Command::new("mosh-server")
         .args([
@@ -368,16 +341,7 @@ fn stock_1_4_0_multifragment_response_reorders_and_expires_after_loss() {
         body: Vec<u8>,
     }
 
-    let version = Command::new("mosh-server")
-        .arg("--version")
-        .output()
-        .unwrap_or_else(|error| panic!("failed to run local stock server: {error}"));
-    assert!(
-        version.status.success()
-            && (version.stdout.windows(10).any(|part| part == b"mosh 1.4.0")
-                || version.stderr.windows(10).any(|part| part == b"mosh 1.4.0")),
-        "fixture requires stock mosh-server 1.4.0"
-    );
+    assert_stock_1_4_0("mosh-server");
 
     let mut output = Command::new("mosh-server")
         .args([
@@ -542,16 +506,7 @@ fn stock_1_4_0_host_bytes_preserve_controlled_utf8_output() {
 
     const MARKER: &[u8] = "A中Z".as_bytes();
 
-    let version = Command::new("mosh-server")
-        .arg("--version")
-        .output()
-        .unwrap_or_else(|error| panic!("failed to run local stock server: {error}"));
-    assert!(
-        version.status.success()
-            && (version.stdout.windows(10).any(|part| part == b"mosh 1.4.0")
-                || version.stderr.windows(10).any(|part| part == b"mosh 1.4.0")),
-        "fixture requires stock mosh-server 1.4.0"
-    );
+    assert_stock_1_4_0("mosh-server");
 
     let mut output = Command::new("mosh-server")
         .args([
@@ -657,101 +612,6 @@ fn stock_1_4_0_host_bytes_preserve_controlled_utf8_output() {
     outbound.zeroize();
     fragment_plaintext.zeroize();
     assert!(server.terminate(), "stock server fixture did not clean up");
-}
-
-#[cfg(target_os = "linux")]
-fn find_detached_pid(output: &std::process::Output) -> Option<u32> {
-    find_pid(&output.stdout).or_else(|| find_pid(&output.stderr))
-}
-
-#[cfg(target_os = "linux")]
-fn find_pid(bytes: &[u8]) -> Option<u32> {
-    const MARKER: &[u8] = b"pid = ";
-    let start = bytes
-        .windows(MARKER.len())
-        .position(|window| window == MARKER)?
-        + MARKER.len();
-    let digit_count = bytes[start..]
-        .iter()
-        .take_while(|byte| byte.is_ascii_digit())
-        .count();
-    let digits = &bytes[start..start + digit_count];
-    if digits.is_empty() {
-        return None;
-    }
-
-    let pid = digits.iter().try_fold(0_u32, |value, byte| {
-        value.checked_mul(10)?.checked_add(u32::from(*byte - b'0'))
-    })?;
-    (pid > 1).then_some(pid)
-}
-
-#[cfg(target_os = "linux")]
-struct DetachedProcessGuard {
-    pid: u32,
-    terminated: bool,
-}
-
-#[cfg(target_os = "linux")]
-impl DetachedProcessGuard {
-    const fn new(pid: u32) -> Self {
-        Self {
-            pid,
-            terminated: false,
-        }
-    }
-
-    fn terminate(&mut self) -> bool {
-        use std::path::Path;
-        use std::process::{Command, Stdio};
-        use std::thread;
-        use std::time::Duration;
-
-        if self.terminated || !Path::new(&format!("/proc/{}", self.pid)).exists() {
-            self.terminated = true;
-            return true;
-        }
-
-        let status = Command::new("kill")
-            .arg("-TERM")
-            .arg(self.pid.to_string())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status();
-        if status.is_err() {
-            return false;
-        }
-
-        for _ in 0..100 {
-            if !Path::new(&format!("/proc/{}", self.pid)).exists() {
-                self.terminated = true;
-                return true;
-            }
-            thread::sleep(Duration::from_millis(20));
-        }
-
-        let _ = Command::new("kill")
-            .arg("-KILL")
-            .arg(self.pid.to_string())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status();
-        for _ in 0..150 {
-            if !Path::new(&format!("/proc/{}", self.pid)).exists() {
-                self.terminated = true;
-                return true;
-            }
-            thread::sleep(Duration::from_millis(20));
-        }
-        false
-    }
-}
-
-#[cfg(target_os = "linux")]
-impl Drop for DetachedProcessGuard {
-    fn drop(&mut self) {
-        let _ = self.terminate();
-    }
 }
 
 #[cfg(target_os = "linux")]

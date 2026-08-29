@@ -19,13 +19,8 @@ use crate::fragment;
 use crate::limits::MAX_DATAGRAM_BYTES;
 #[cfg(target_os = "linux")]
 use crate::packet::{Direction, PacketReceiver};
-
 #[cfg(target_os = "linux")]
-const PUBLIC_TEST_KEY_TEXT: &str = "4NeCCgvZFe2RnPgrcU1PQw";
-#[cfg(target_os = "linux")]
-const PUBLIC_TEST_KEY_BYTES: [u8; 16] = [
-    0xe0, 0xd7, 0x82, 0x0a, 0x0b, 0xd9, 0x15, 0xed, 0x91, 0x9c, 0xf8, 0x2b, 0x71, 0x4d, 0x4f, 0x43,
-];
+use crate::test_support::{STOCK_1_4_0_KEY_BYTES, STOCK_1_4_0_KEY_TEXT, assert_stock_1_4_0};
 
 #[cfg(target_os = "linux")]
 #[derive(Clone, PartialEq, Message)]
@@ -52,14 +47,14 @@ struct ObservedUserBytes {
 #[test]
 #[ignore = "requires a locally installed stock mosh-client 1.4.0 and util-linux script"]
 fn stock_1_4_0_client_input_difference_contains_exact_utf8_bytes() {
-    assert_stock_client_version();
+    assert_stock_1_4_0("mosh-client");
 
     let socket = UdpSocket::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
     socket
         .set_read_timeout(Some(Duration::from_secs(3)))
         .unwrap();
     let mut child = spawn_stock_client(&socket, "stty rows 24 cols 80");
-    let key = SessionKey::new(PUBLIC_TEST_KEY_BYTES);
+    let key = SessionKey::new(STOCK_1_4_0_KEY_BYTES);
     let mut receiver = PacketReceiver::new(&key, Direction::ClientToServer);
 
     let initial = receive_stock_instruction(&socket, &mut receiver);
@@ -88,7 +83,7 @@ fn stock_1_4_0_client_input_difference_contains_exact_utf8_bytes() {
 #[test]
 #[ignore = "requires a locally installed stock mosh-client 1.4.0 and util-linux script"]
 fn stock_1_4_0_client_resize_reuses_the_terminal_size_operation() {
-    assert_stock_client_version();
+    assert_stock_1_4_0("mosh-client");
 
     let socket = UdpSocket::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
     socket
@@ -99,7 +94,7 @@ fn stock_1_4_0_client_resize_reuses_the_terminal_size_operation() {
         "(sleep 0.5; stty rows 25 cols 81 </dev/tty; kill -WINCH \"$parent\") &"
     );
     let mut child = spawn_stock_client(&socket, setup);
-    let key = SessionKey::new(PUBLIC_TEST_KEY_BYTES);
+    let key = SessionKey::new(STOCK_1_4_0_KEY_BYTES);
     let mut receiver = PacketReceiver::new(&key, Direction::ClientToServer);
 
     let initial = receive_stock_instruction(&socket, &mut receiver);
@@ -122,23 +117,9 @@ fn stock_1_4_0_client_resize_reuses_the_terminal_size_operation() {
 }
 
 #[cfg(target_os = "linux")]
-fn assert_stock_client_version() {
-    let version = Command::new("mosh-client")
-        .arg("--version")
-        .output()
-        .unwrap_or_else(|error| panic!("failed to run local stock client: {error}"));
-    assert!(
-        version.status.success()
-            && (version.stdout.windows(10).any(|part| part == b"mosh 1.4.0")
-                || version.stderr.windows(10).any(|part| part == b"mosh 1.4.0")),
-        "fixture requires stock mosh-client 1.4.0"
-    );
-}
-
-#[cfg(target_os = "linux")]
 fn spawn_stock_client(socket: &UdpSocket, setup: &str) -> ProcessGroupGuard {
     let command = format!(
-        "{setup}\nexec env TERM=xterm-256color LANG=C.UTF-8 MOSH_KEY={PUBLIC_TEST_KEY_TEXT} mosh-client 127.0.0.1 {}",
+        "{setup}\nexec env TERM=xterm-256color LANG=C.UTF-8 MOSH_KEY={STOCK_1_4_0_KEY_TEXT} mosh-client 127.0.0.1 {}",
         socket.local_addr().unwrap().port()
     );
     let child = Command::new("script")

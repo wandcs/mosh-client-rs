@@ -32,6 +32,10 @@ identifier. Other size or capacity failures preserve earlier valid fragments.
 The 10-second lifetime starts with the first retained fragment and does not
 slide when later fragments arrive. Reject trailing zlib members.
 
+The reassembler stores one optional incomplete instruction. Its 1 MiB
+per-instruction bound therefore also enforces the 1 MiB total-storage bound;
+the implementation does not maintain a second aggregate counter.
+
 The test-only deterministic network fixture applies the same 2 KiB datagram
 limit and retains at most 256 scheduled datagrams. Queue overflow, time
 overflow, backward virtual time, invalid corruption offsets, and events after

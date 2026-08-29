@@ -25,6 +25,8 @@ mod session;
 mod synchronization;
 #[allow(dead_code)]
 mod terminal;
+#[cfg(all(test, target_os = "linux"))]
+mod test_support;
 #[allow(dead_code)]
 mod timing;
 

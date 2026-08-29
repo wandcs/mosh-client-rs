@@ -3,8 +3,7 @@ use std::collections::BTreeMap;
 
 use crate::limits::{
     INCOMPLETE_INSTRUCTION_LIFETIME_MS, MAX_COMPRESSED_INSTRUCTION_BYTES, MAX_FRAGMENT_BODY_BYTES,
-    MAX_FRAGMENTS_PER_INSTRUCTION, MAX_INCOMPLETE_INSTRUCTIONS,
-    MAX_TOTAL_INCOMPLETE_FRAGMENT_BYTES,
+    MAX_FRAGMENTS_PER_INSTRUCTION,
 };
 
 const TIMESTAMP_BYTES: usize = 2;
@@ -31,7 +30,6 @@ pub(crate) enum ReassemblyError {
     ConflictingFragment,
     InstructionTooLarge,
     TooManyIncompleteInstructions,
-    TotalStorageExceeded,
     TimeMovedBackwards,
     TimerExhausted,
 }
@@ -61,6 +59,7 @@ struct StoredFragment {
 
 #[derive(Debug)]
 struct IncompleteInstruction {
+    identifier: u64,
     created_at_ms: u64,
     stored_bytes: usize,
     final_number: Option<u16>,
@@ -68,8 +67,9 @@ struct IncompleteInstruction {
 }
 
 impl IncompleteInstruction {
-    fn new(created_at_ms: u64) -> Self {
+    fn new(identifier: u64, created_at_ms: u64) -> Self {
         Self {
+            identifier,
             created_at_ms,
             stored_bytes: 0,
             final_number: None,
@@ -139,16 +139,14 @@ enum InsertKind {
 
 #[derive(Debug)]
 pub(crate) struct FragmentReassembler {
-    incomplete: BTreeMap<u64, IncompleteInstruction>,
-    stored_bytes: usize,
+    incomplete: Option<IncompleteInstruction>,
     last_observed_ms: u64,
 }
 
 impl FragmentReassembler {
     pub(crate) const fn new(started_at_ms: u64) -> Self {
         Self {
-            incomplete: BTreeMap::new(),
-            stored_bytes: 0,
+            incomplete: None,
             last_observed_ms: started_at_ms,
         }
     }
@@ -164,7 +162,11 @@ impl FragmentReassembler {
             return Err(ReassemblyError::FragmentNumberOutOfRange);
         }
 
-        if !self.incomplete.contains_key(&fragment.identifier) {
+        let matches_incomplete = self
+            .incomplete
+            .as_ref()
+            .is_some_and(|instruction| instruction.identifier == fragment.identifier);
+        if !matches_incomplete {
             if fragment.number == 0 && fragment.is_final {
                 return if fragment.body.len() <= MAX_COMPRESSED_INSTRUCTION_BYTES {
                     Ok(ReassemblyOutcome::Complete(fragment.body.to_vec()))
@@ -172,35 +174,28 @@ impl FragmentReassembler {
                     Err(ReassemblyError::InstructionTooLarge)
                 };
             }
-            if self.incomplete.len() == MAX_INCOMPLETE_INSTRUCTIONS {
+            // The Option structurally enforces the one-incomplete-message limit.
+            if self.incomplete.is_some() {
                 return Err(ReassemblyError::TooManyIncompleteInstructions);
             }
             if fragment.body.len() > MAX_COMPRESSED_INSTRUCTION_BYTES {
                 return Err(ReassemblyError::InstructionTooLarge);
             }
-            let total_bytes = self
-                .stored_bytes
-                .checked_add(fragment.body.len())
-                .ok_or(ReassemblyError::TotalStorageExceeded)?;
-            if total_bytes > MAX_TOTAL_INCOMPLETE_FRAGMENT_BYTES {
-                return Err(ReassemblyError::TotalStorageExceeded);
-            }
-            let mut instruction = IncompleteInstruction::new(now_ms);
+            let mut instruction = IncompleteInstruction::new(fragment.identifier, now_ms);
             instruction.insert(&fragment);
-            self.incomplete.insert(fragment.identifier, instruction);
-            self.stored_bytes = total_bytes;
+            self.incomplete = Some(instruction);
             return Ok(ReassemblyOutcome::Pending);
         }
 
         let insert_kind = self
             .incomplete
-            .get(&fragment.identifier)
+            .as_ref()
             .expect("the incomplete instruction exists")
             .classify(&fragment);
         let insert_kind = match insert_kind {
             Ok(kind) => kind,
             Err(error) => {
-                self.discard(fragment.identifier);
+                self.incomplete = None;
                 return Err(error);
             }
         };
@@ -210,7 +205,7 @@ impl FragmentReassembler {
 
         let instruction_bytes = self
             .incomplete
-            .get(&fragment.identifier)
+            .as_ref()
             .expect("the incomplete instruction exists")
             .stored_bytes
             .checked_add(fragment.body.len())
@@ -218,29 +213,20 @@ impl FragmentReassembler {
         if instruction_bytes > MAX_COMPRESSED_INSTRUCTION_BYTES {
             return Err(ReassemblyError::InstructionTooLarge);
         }
-        let total_bytes = self
-            .stored_bytes
-            .checked_add(fragment.body.len())
-            .ok_or(ReassemblyError::TotalStorageExceeded)?;
-        if total_bytes > MAX_TOTAL_INCOMPLETE_FRAGMENT_BYTES {
-            return Err(ReassemblyError::TotalStorageExceeded);
-        }
 
         let instruction = self
             .incomplete
-            .get_mut(&fragment.identifier)
+            .as_mut()
             .expect("the incomplete instruction exists");
         instruction.insert(&fragment);
-        self.stored_bytes = total_bytes;
         if !instruction.is_complete() {
             return Ok(ReassemblyOutcome::Pending);
         }
 
         let complete = self
             .incomplete
-            .remove(&fragment.identifier)
+            .take()
             .expect("the completed instruction exists");
-        self.stored_bytes -= complete.stored_bytes;
         Ok(ReassemblyOutcome::Complete(complete.assemble()))
     }
 
@@ -250,18 +236,17 @@ impl FragmentReassembler {
     }
 
     pub(crate) fn clear(&mut self) -> usize {
-        let discarded = self.incomplete.len();
-        self.incomplete.clear();
-        self.stored_bytes = 0;
-        discarded
+        usize::from(self.incomplete.take().is_some())
     }
 
     pub(crate) fn incomplete_count(&self) -> usize {
-        self.incomplete.len()
+        usize::from(self.incomplete.is_some())
     }
 
-    pub(crate) const fn stored_bytes(&self) -> usize {
-        self.stored_bytes
+    pub(crate) fn stored_bytes(&self) -> usize {
+        self.incomplete
+            .as_ref()
+            .map_or(0, |instruction| instruction.stored_bytes)
     }
 
     fn observe_time(&mut self, now_ms: u64) -> Result<(), ReassemblyError> {
@@ -273,26 +258,22 @@ impl FragmentReassembler {
     }
 
     fn expire_due(&mut self, now_ms: u64) -> Result<usize, ReassemblyError> {
-        let mut expired = Vec::new();
-        for (identifier, instruction) in &self.incomplete {
-            let deadline = instruction
-                .created_at_ms
-                .checked_add(INCOMPLETE_INSTRUCTION_LIFETIME_MS)
-                .ok_or(ReassemblyError::TimerExhausted)?;
-            if deadline <= now_ms {
-                expired.push(*identifier);
-            }
+        let expired = self
+            .incomplete
+            .as_ref()
+            .map(|instruction| {
+                instruction
+                    .created_at_ms
+                    .checked_add(INCOMPLETE_INSTRUCTION_LIFETIME_MS)
+                    .ok_or(ReassemblyError::TimerExhausted)
+                    .map(|deadline| deadline <= now_ms)
+            })
+            .transpose()?
+            .unwrap_or(false);
+        if expired {
+            self.incomplete = None;
         }
-        for identifier in &expired {
-            self.discard(*identifier);
-        }
-        Ok(expired.len())
-    }
-
-    fn discard(&mut self, identifier: u64) {
-        if let Some(instruction) = self.incomplete.remove(&identifier) {
-            self.stored_bytes -= instruction.stored_bytes;
-        }
+        Ok(usize::from(expired))
     }
 }
 

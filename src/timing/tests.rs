@@ -280,6 +280,43 @@ fn stale_plans_backward_time_and_overflow_are_explicit() {
 }
 
 #[test]
+fn generation_exhaustion_preserves_pending_scheduler_state() {
+    let timing = RttEstimator::new();
+    let mut note_failure = SendScheduler::new(0);
+    note_failure.generation = u64::MAX;
+
+    assert_eq!(
+        note_failure.note_local_change(0),
+        Err(TimingError::GenerationExhausted)
+    );
+    assert_eq!(note_failure.local_change_at_ms, None);
+    assert_eq!(note_failure.generation, u64::MAX);
+
+    let mut acknowledgement_failure = SendScheduler::new(0);
+    acknowledgement_failure.generation = u64::MAX;
+    assert_eq!(
+        acknowledgement_failure.note_acknowledgement_needed(0),
+        Err(TimingError::GenerationExhausted)
+    );
+    assert_eq!(acknowledgement_failure.acknowledgement_at_ms, None);
+    assert_eq!(acknowledgement_failure.generation, u64::MAX);
+
+    let mut commit_failure = SendScheduler::new(0);
+    commit_failure.generation = u64::MAX - 1;
+    commit_failure.note_local_change(0).unwrap();
+    let plan = expect_send(commit_failure.poll(15, &timing, None).unwrap());
+
+    assert_eq!(
+        commit_failure.commit_send(plan),
+        Err(TimingError::GenerationExhausted)
+    );
+    assert_eq!(commit_failure.local_change_at_ms, Some(0));
+    assert_eq!(commit_failure.acknowledgement_at_ms, None);
+    assert_eq!(commit_failure.last_send_ms, None);
+    assert_eq!(commit_failure.generation, u64::MAX);
+}
+
+#[test]
 #[expect(
     clippy::too_many_lines,
     reason = "one uninterrupted scenario proves loss, RTO recovery, roaming, and delayed acknowledgement ordering"

@@ -322,8 +322,7 @@ impl From<DriverError> for SessionError {
             | DriverError::Paint(_)
             | DriverError::Reassembly(
                 ReassemblyError::InstructionTooLarge
-                | ReassemblyError::TooManyIncompleteInstructions
-                | ReassemblyError::TotalStorageExceeded,
+                | ReassemblyError::TooManyIncompleteInstructions,
             ) => Self::ResourceLimit,
             DriverError::IncompleteDatagramSend => Self::Io(ErrorKind::WriteZero),
             DriverError::MissingClientState | DriverError::MissingTerminalState => {
