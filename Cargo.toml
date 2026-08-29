@@ -1,0 +1,20 @@
+[package]
+name = "mosh-client"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT OR Apache-2.0"
+description = "An independent, unofficial, wire-compatible Mosh client implementation in Rust"
+readme = "README.md"
+keywords = ["mosh", "terminal", "udp", "roaming"]
+categories = ["network-programming"]
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
