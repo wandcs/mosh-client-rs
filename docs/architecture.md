@@ -377,6 +377,7 @@ src/
   packet.rs              authenticated datagram envelope
   crypto.rs              approved primitive integration and secret handling
   fragment.rs            bounded datagram fragmentation state
+  fuzzing.rs             cfg(fuzzing)-only parser and state-machine entry points
   instruction.rs         bounded zlib and verified Protobuf messages
   synchronization.rs     bounded SSP sender and receiver state transitions
   timing.rs              RTT, pacing, acknowledgement, recovery and heartbeat deadlines
@@ -400,6 +401,9 @@ tests/
   terminal_output.rs
   session_lifecycle.rs
   interoperability.rs
+
+fuzz/
+  fuzz_targets/          unpublished Linux cargo-fuzz parser and state targets
 ```
 
 Modules stay private unless a public contract requires them. Test support does

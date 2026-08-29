@@ -3,3 +3,7 @@
 *.profraw
 .idea/
 .vscode/
+/fuzz/artifacts/
+/fuzz/corpus/
+/fuzz/coverage/
+/fuzz/target/

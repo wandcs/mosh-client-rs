@@ -100,6 +100,29 @@ mod tests {
     }
 
     #[test]
+    fn sparse_blank_rows_never_confuse_incremental_repaint() {
+        let initial = TerminalState::new(40, 20).unwrap();
+        let frames = [
+            b"\x1b[1;1HTOP\x1b[18;1HLOWER".as_slice(),
+            b"\x1b[1;1H   \x1b[10;1HMIDDLE\x1b[18;1Hlower".as_slice(),
+            b"\x1b[10;1H      \x1b[3;1HFINAL".as_slice(),
+        ];
+        let mut previous = initial;
+        let mut projection = vt100::Parser::new(20, 40, 0);
+        projection.process(&TerminalPainter::full(&previous).unwrap());
+
+        for update in frames {
+            let current = apply(&previous, update);
+            projection.process(&TerminalPainter::incremental(&previous, &current).unwrap());
+            assert_eq!(
+                projection.screen().state_formatted(),
+                current.screen().state_formatted()
+            );
+            previous = current;
+        }
+    }
+
+    #[test]
     fn size_change_forces_a_self_contained_full_repaint() {
         let previous = apply(&TerminalState::new(80, 24).unwrap(), b"old");
         let resize = WireHostDifference {

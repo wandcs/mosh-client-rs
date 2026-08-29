@@ -1,0 +1,30 @@
+[package]
+name = "mosh-client-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+license = "MIT OR Apache-2.0"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "=0.4.13"
+mosh-client = { path = "..", version = "=0.0.0" }
+
+[workspace]
+members = ["."]
+
+[[bin]]
+name = "untrusted_parsers"
+path = "fuzz_targets/untrusted_parsers.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "state_transitions"
+path = "fuzz_targets/state_transitions.rs"
+test = false
+doc = false
+bench = false

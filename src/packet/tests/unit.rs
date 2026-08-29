@@ -1,4 +1,5 @@
 use super::super::*;
+use proptest::prelude::*;
 
 const KEY: [u8; 16] = [0x42; 16];
 
@@ -204,4 +205,22 @@ fn rejects_the_wrong_direction_without_decrypting() {
         receiver.open(&mut datagram).unwrap_err(),
         PacketError::WrongDirection
     );
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(64))]
+
+    #[test]
+    fn authenticated_round_trip_preserves_generated_payloads(
+        sequence in 0_u64..=MAX_SEQUENCE,
+        plaintext in prop::collection::vec(any::<u8>(), 0..512),
+    ) {
+        let mut datagram = sealed(sequence, &plaintext);
+        let key = SessionKey::new(KEY);
+        let mut receiver = PacketReceiver::new(&key, Direction::ServerToClient);
+        let opened = receiver.open(&mut datagram).unwrap();
+
+        prop_assert_eq!(opened.sequence, sequence);
+        prop_assert_eq!(opened.plaintext, plaintext);
+    }
 }

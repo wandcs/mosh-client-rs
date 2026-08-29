@@ -13,6 +13,9 @@ mod crypto;
 mod error;
 #[allow(dead_code)]
 mod fragment;
+#[cfg(fuzzing)]
+#[doc(hidden)]
+pub mod fuzzing;
 #[allow(dead_code)]
 mod instruction;
 mod limits;

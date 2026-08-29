@@ -25,8 +25,12 @@ vt100 = "=0.16.2"
 vte = "=0.15.0"
 zeroize = { version = "1.9.0", default-features = false }
 
+[dev-dependencies]
+proptest = { version = "=1.11.0", default-features = false, features = ["std"] }
+
 [lints.rust]
 unsafe_code = "forbid"
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(fuzzing)"] }
 
 [lints.clippy]
 pedantic = { level = "warn", priority = -1 }

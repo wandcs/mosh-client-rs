@@ -23,8 +23,10 @@ fn bootstrap() -> Bootstrap {
 #[test]
 fn public_session_validates_initial_size_without_starting_a_task() {
     runtime().block_on(async {
-        let result = Session::connect(bootstrap(), 0, 24).await;
-        assert!(matches!(result, Err(SessionError::InvalidTerminalSize)));
+        for (columns, rows) in [(0, 0), (80, 0), (0, 24)] {
+            let result = Session::connect(bootstrap(), columns, rows).await;
+            assert!(matches!(result, Err(SessionError::InvalidTerminalSize)));
+        }
     });
 }
 
@@ -37,6 +39,7 @@ fn public_session_rejects_invalid_commands_before_queueing_them() {
             session.send_input(vec![0; 64 * 1024 + 1]).await,
             Err(SessionCommandError::InputTooLarge)
         );
+        assert!(session.send_input(vec![0; 64 * 1024]).await.is_ok());
         assert_eq!(
             session.resize(0, 24).await,
             Err(SessionCommandError::InvalidTerminalSize)

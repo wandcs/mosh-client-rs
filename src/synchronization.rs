@@ -156,6 +156,11 @@ impl SynchronizationState {
         self.sent_states.back().map(|state| state.sent_at_ms)
     }
 
+    #[cfg(fuzzing)]
+    pub(crate) fn fuzz_retained_counts(&self) -> (usize, usize) {
+        (self.sent_states.len(), self.received_states.len())
+    }
+
     pub(crate) fn advance_local(&mut self) -> Result<u64, SynchronizationError> {
         let next_state = self
             .local_latest

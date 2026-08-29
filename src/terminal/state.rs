@@ -270,6 +270,7 @@ fn is_suppressed_external_policy_sequence(
 
 #[cfg(test)]
 mod tests {
+    use proptest::prelude::*;
     use prost::Message as _;
 
     use super::*;
@@ -347,6 +348,38 @@ mod tests {
                 .unwrap_err(),
             TerminalError::TooManyScalarsInCell
         );
+    }
+
+    #[test]
+    fn unicode_fallback_abort_regression_is_bounded_and_failure_atomic() {
+        let stable = TerminalState::new(80, 24)
+            .unwrap()
+            .apply(&difference(vec![host_bytes(b"stable")]))
+            .unwrap();
+
+        for combining_marks in 0..8 {
+            let cell = format!("e{}", "\u{301}".repeat(combining_marks));
+            assert!(
+                stable
+                    .apply(&difference(vec![
+                        host_bytes(b"\r"),
+                        host_bytes(cell.as_bytes())
+                    ]))
+                    .is_ok()
+            );
+        }
+
+        let rejected = format!("e{}", "\u{301}".repeat(8));
+        assert_eq!(
+            stable
+                .apply(&difference(vec![
+                    host_bytes(b"\r"),
+                    host_bytes(rejected.as_bytes())
+                ]))
+                .unwrap_err(),
+            TerminalError::TooManyScalarsInCell
+        );
+        assert_eq!(stable.screen.contents(), "stable");
     }
 
     #[test]
@@ -434,6 +467,34 @@ mod tests {
         for toggle in [b"\x1b[?1004h".as_slice(), b"\x1b[?1004l"] {
             let next = state.apply(&difference(vec![host_bytes(toggle)])).unwrap();
             assert_eq!(next.screen.contents(), state.screen.contents());
+        }
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(64))]
+
+        #[test]
+        fn ordered_ascii_chunks_converge_to_the_concatenated_update(
+            chunks in prop::collection::vec(
+                prop::collection::vec(0x20_u8..0x7f, 0..32),
+                1..16,
+            )
+        ) {
+            let operations = chunks.iter().map(|chunk| host_bytes(chunk)).collect();
+            let chunked = TerminalState::new(80, 24)
+                .unwrap()
+                .apply(&difference(operations))
+                .unwrap();
+            let concatenated = chunks.concat();
+            let single = TerminalState::new(80, 24)
+                .unwrap()
+                .apply(&difference(vec![host_bytes(&concatenated)]))
+                .unwrap();
+
+            prop_assert_eq!(
+                chunked.screen.state_formatted(),
+                single.screen.state_formatted()
+            );
         }
     }
 }

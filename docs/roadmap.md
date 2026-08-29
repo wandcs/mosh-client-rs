@@ -179,18 +179,24 @@ found no lower-cost design.
 
 ### Phase 3E: Rebuild tests around retained risks
 
-- [ ] Build a coverage map from supported core behavior and applicable external
+Phase 3E is complete as of 2026-08-30. The
+[coverage map](test-coverage.md) connects retained risks to unit, boundary,
+property, deterministic, concurrency, fuzz, and stock evidence. It records
+external defect regressions, known stock limitations, compatibility exclusions,
+and the Phase 4 and 3F gates without changing production behavior or public API.
+
+- [x] Build a coverage map from supported core behavior and applicable external
   bug classes to unit, boundary, property, deterministic state-machine,
   concurrency, fuzz, and stock-interoperability tests. Mark gaps, redundant
   coverage, and behavior outside the compatibility claim.
-- [ ] After production boundaries stabilize, reorganize tests by risk: protocol
+- [x] After production boundaries stabilize, reorganize tests by risk: protocol
   and parser boundaries; SSP and deterministic timing; Session concurrency and
   lifecycle; terminal, repaint, prediction, and convergence; then stock-only
   behavior that local models cannot prove.
-- [ ] Add independently designed regression tests for applicable third-party
+- [x] Add independently designed regression tests for applicable third-party
   bugs. Preserve unique local fixtures, and remove duplicate or obsolete tests
   only after the coverage map proves that no supported behavior is lost.
-- [ ] Add fuzzing and resource-exhaustion coverage for the retained parsers and
+- [x] Add fuzzing and resource-exhaustion coverage for the retained parsers and
   state machines, using the explicit limits and invariants established by the
   preceding reviews.
 

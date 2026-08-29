@@ -42,6 +42,14 @@ stock-process fixture code. Move more process fixtures only when that creates a
 clear reusable test-support boundary. Choose test boundaries by ownership and
 maintenance cost, not by a line-count threshold.
 
+Phase 3E confirmed that this layout already groups tests by retained risk:
+parser and protocol tests live with their owners; SSP and timing own
+deterministic models; Session owns lifecycle and concurrency; terminal modules
+own state, repaint, prediction, and convergence; stock-only process fixtures
+stay separated from fast tests. Moving them again would weaken private
+ownership without removing duplication. The
+[coverage map](test-coverage.md) is the cross-module index.
+
 ## Remote-service policy
 
 - Unit, property, simulation, fuzz, and terminal-output tests run offline.
@@ -397,7 +405,7 @@ cargo test --all-targets --all-features
 These commands run in the default WSL distribution at
 `/mnt/c/repos/mosh-client-rs`.
 
-## Planned test entrypoints
+## Test entrypoints
 
 Keep the common path in Cargo rather than a project-specific test runner:
 
@@ -422,9 +430,6 @@ cargo test --lib stock_1_4_0_server_accepts_the_project_initial_packet \
 cargo test --lib stock_1_4_0_multifragment_response_reorders_and_expires_after_loss \
   -- --ignored --nocapture
 
-# One stored protocol contract fixture
-cargo test --test wire_contract
-
 # Dependency policy after Cargo.lock exists
 cargo deny check
 cargo audit
@@ -435,19 +440,19 @@ exact stock 1.4.0 binary is absent. It must never download, install, or contact 
 public server. A later helper may launch the local binary and UDP impairment
 proxy, but it stays test-only and accepts no credentials.
 
-Phase 3 adds focused fuzz entrypoints instead of one unbounded aggregate target:
+Phase 3E adds two offline fuzz entrypoints instead of one unbounded aggregate
+target:
 
 ```bash
-cargo fuzz run bootstrap
-cargo fuzz run datagram
-cargo fuzz run fragment
-cargo fuzz run instruction
-cargo fuzz run terminal
-cargo fuzz run synchronization
+cargo +nightly fuzz check untrusted_parsers
+cargo +nightly fuzz check state_transitions
+cargo +nightly fuzz run untrusted_parsers -- -runs=10000 -max_len=4096
+cargo +nightly fuzz run state_transitions -- -runs=10000 -max_len=4096
 ```
 
-Pin a finite smoke duration in CI. Longer local fuzz campaigns remain optional
-and write only minimized, sanitized regressions into the repository.
+Fuzz corpora, artifacts, and coverage output stay local and require no remote
+service. See the [coverage map](test-coverage.md) for target scope and retained
+gaps.
 
 ## Completion and stop conditions
 

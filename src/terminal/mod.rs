@@ -199,7 +199,20 @@ mod tests {
             Err(TerminalError::InvalidOperation)
         );
 
-        let bytes = WireHostDifference {
+        let at_limit = WireHostDifference {
+            operations: vec![
+                WireHostOperation {
+                    host_bytes: Some(WireHostBytes { bytes: Vec::new() }),
+                    size: None,
+                    echo_acknowledgement: None,
+                };
+                MAX_TERMINAL_OPERATIONS_PER_DIFFERENCE
+            ],
+        }
+        .encode_to_vec();
+        assert!(TerminalDifference::decode(&at_limit).is_ok());
+
+        let above_limit = WireHostDifference {
             operations: vec![
                 WireHostOperation {
                     host_bytes: Some(WireHostBytes { bytes: Vec::new() }),
@@ -211,7 +224,7 @@ mod tests {
         }
         .encode_to_vec();
         assert_eq!(
-            TerminalDifference::decode(&bytes),
+            TerminalDifference::decode(&above_limit),
             Err(TerminalError::TooManyOperations)
         );
     }

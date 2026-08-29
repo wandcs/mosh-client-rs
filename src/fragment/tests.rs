@@ -1,5 +1,6 @@
 use super::*;
 use crate::limits::MAX_COMPRESSED_INSTRUCTION_BYTES;
+use proptest::prelude::*;
 
 fn observed_fragment(identifier: u64, number: u16, is_final: bool, body: &[u8]) -> Fragment<'_> {
     Fragment {
@@ -261,6 +262,34 @@ fn byte_limits_fail_without_retaining_the_rejected_fragment() {
 }
 
 #[test]
+fn exact_instruction_byte_limit_completes_without_retained_state() {
+    let full_fragments = MAX_COMPRESSED_INSTRUCTION_BYTES / MAX_FRAGMENT_BODY_BYTES;
+    let remainder = MAX_COMPRESSED_INSTRUCTION_BYTES % MAX_FRAGMENT_BODY_BYTES;
+    let full_body = vec![0x5a; MAX_FRAGMENT_BODY_BYTES];
+    let final_body = vec![0xa5; remainder];
+    let final_number = u16::try_from(full_fragments).unwrap();
+    let mut reassembler = FragmentReassembler::new(0);
+
+    for number in 0..final_number {
+        assert_eq!(
+            reassembler
+                .push(0, observed_fragment(7, number, false, &full_body))
+                .unwrap(),
+            ReassemblyOutcome::Pending
+        );
+    }
+    let completed = reassembler
+        .push(0, observed_fragment(7, final_number, true, &final_body))
+        .unwrap();
+    let ReassemblyOutcome::Complete(bytes) = completed else {
+        panic!("the exact byte limit must complete")
+    };
+    assert_eq!(bytes.len(), MAX_COMPRESSED_INSTRUCTION_BYTES);
+    assert_eq!(reassembler.incomplete_count(), 0);
+    assert_eq!(reassembler.stored_bytes(), 0);
+}
+
+#[test]
 fn owner_cleanup_and_time_errors_clear_or_preserve_state_explicitly() {
     let mut reassembler = FragmentReassembler::new(10);
     reassembler
@@ -280,4 +309,32 @@ fn owner_cleanup_and_time_errors_clear_or_preserve_state_explicitly() {
         ReassemblyOutcome::Complete(b"accepted".to_vec())
     );
     assert_eq!(reassembler.clear(), 0);
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(64))]
+
+    #[test]
+    fn reverse_order_reassembly_preserves_every_generated_byte(
+        bodies in prop::collection::vec(
+            prop::collection::vec(any::<u8>(), 0..64),
+            1..64,
+        )
+    ) {
+        let expected = bodies.concat();
+        let final_number = u16::try_from(bodies.len() - 1).unwrap();
+        let mut reassembler = FragmentReassembler::new(0);
+        let mut outcome = ReassemblyOutcome::Pending;
+
+        for (number, body) in bodies.iter().enumerate().rev() {
+            let number = u16::try_from(number).unwrap();
+            outcome = reassembler
+                .push(0, observed_fragment(1, number, number == final_number, body))
+                .unwrap();
+        }
+
+        prop_assert_eq!(outcome, ReassemblyOutcome::Complete(expected));
+        prop_assert_eq!(reassembler.incomplete_count(), 0);
+        prop_assert_eq!(reassembler.stored_bytes(), 0);
+    }
 }

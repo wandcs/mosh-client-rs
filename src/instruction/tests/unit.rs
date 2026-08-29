@@ -40,6 +40,13 @@ fn client_input_and_resize_preserve_the_verified_operation_order() {
 
 #[test]
 fn client_difference_limits_fail_before_encoding() {
+    assert!(
+        encode_client_difference(&vec![
+            ClientOperation::Input(Vec::new());
+            MAX_CLIENT_OPERATIONS_AFTER_ACK
+        ])
+        .is_ok()
+    );
     assert_eq!(
         encode_client_difference(&[ClientOperation::Input(vec![0; MAX_INPUT_COMMAND_BYTES + 1])]),
         Err(InstructionError::InputTooLarge)

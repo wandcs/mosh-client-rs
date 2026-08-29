@@ -181,6 +181,24 @@ becomes available.
 | License policy | `cargo-deny` | Check licenses, bans, sources, and duplicate versions after a lockfile exists. |
 | Advisories | `cargo-audit` | Check RustSec before phase completion and release; CI may use a cached advisory database. |
 
+## Adopted Phase 3E test graph
+
+Property tests adopt `proptest` 1.11.0 with default features disabled and only
+`std`. It is `MIT OR Apache-2.0`, shares the project's Rust 1.85 floor, and is
+compiled only for test targets. The root lockfile adds 18 dev-only packages.
+The selected graph omits `fork`, `timeout`, `tempfile`, `rusty-fork`, and the
+bit-set feature; generated collections and case counts are bounded in each
+property.
+
+The separate unpublished `fuzz/` workspace pins `libfuzzer-sys` 0.4.13. Its
+license is `(MIT OR Apache-2.0) AND NCSA`; NCSA is allowed only by
+`fuzz/deny.toml`, not by the production dependency policy. The crate brings its
+C++ libFuzzer build only to nightly Linux fuzz targets. It is absent from the
+production lockfile, stable builds, and ARM64 HarmonyOS artifacts.
+`cargo-fuzz` 0.13.2 is a local WSL tool, not a repository dependency or runtime
+service. Removing `proptest`, `fuzz/`, and the `cfg(fuzzing)` module restores
+the prior test graph without production-code changes.
+
 ## Lockfile rules
 
 - Require `bytes >= 1.11.1`; earlier 1.x releases contain
