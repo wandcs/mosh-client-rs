@@ -115,6 +115,73 @@ fn paste_and_additional_tentative_input_are_never_speculated() {
 }
 
 #[test]
+fn erase_and_mixed_input_never_enter_the_projection() {
+    let authoritative = state(b"prompt> ");
+    let mut prediction = LocalPrediction::new();
+    prediction.active_epoch = true;
+
+    assert!(
+        prediction
+            .observe_input(2, b"a", &authoritative, 10)
+            .unwrap()
+    );
+    prediction
+        .observe_authoritative(Some(1), &authoritative)
+        .unwrap();
+    assert!(
+        prediction
+            .display(&authoritative)
+            .display_equivalent(&state(b"prompt> a"))
+    );
+
+    assert!(
+        prediction
+            .observe_input(3, b"\x08", &authoritative, 11)
+            .unwrap()
+    );
+    assert!(prediction.pending.is_empty());
+    assert!(!prediction.active_epoch);
+    assert!(
+        prediction
+            .display(&authoritative)
+            .display_equivalent(&authoritative)
+    );
+
+    prediction.active_epoch = true;
+    assert!(
+        prediction
+            .observe_input(4, b"b", &authoritative, 12)
+            .unwrap()
+    );
+    assert!(
+        prediction
+            .observe_input(5, b"\x7f", &authoritative, 13)
+            .unwrap()
+    );
+    assert!(prediction.pending.is_empty());
+    assert!(!prediction.active_epoch);
+
+    prediction.active_epoch = true;
+    assert!(
+        prediction
+            .observe_input(6, b"c", &authoritative, 14)
+            .unwrap()
+    );
+    assert!(
+        prediction
+            .observe_input(7, b"d\x08", &authoritative, 15)
+            .unwrap()
+    );
+    assert!(prediction.pending.is_empty());
+    assert!(!prediction.active_epoch);
+    assert!(
+        prediction
+            .display(&authoritative)
+            .display_equivalent(&authoritative)
+    );
+}
+
+#[test]
 fn prediction_age_and_capacity_are_bounded() {
     let authoritative = state(b"");
     let mut prediction = LocalPrediction::new();

@@ -153,10 +153,11 @@ overlapping fragment messages remain behind their evidence gates.
 ### Phase 3D: Refactor only the retained design
 
 Phase 3D is in progress. The completed batches in the
-[refactoring log](refactoring-log.md) unified private Session closure and moved
-the bounded client operation history to its real ownership boundary without
-changing SSP, terminal snapshot retention, the public API, or wire behavior.
-The next review covers terminal state, repaint, and prediction; later
+[refactoring log](refactoring-log.md) unified private Session closure, moved the
+bounded client operation history to its real ownership boundary, and retained
+the existing terminal, repaint, and measured-prediction boundaries after
+rejecting unmeasured allocation-driven redesign. The next review covers parser,
+fragmentation, and timing only where it finds a concrete simplification; later
 mechanisms remain unauthorized until that batch is complete.
 
 - [ ] Review retained code for mixed ownership, mixed responsibilities, long or

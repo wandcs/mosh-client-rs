@@ -1,6 +1,7 @@
 # Phase 3 refactoring log
 
-This log records accepted Phase 3D refactors. Each batch must preserve the
+This log records accepted Phase 3D refactors and reviews that deliberately
+retain the existing design. Each batch must preserve the
 [mechanism necessity review](necessity-review.md) and remain independently
 reviewable and reversible.
 
@@ -69,3 +70,35 @@ reviewable and reversible.
   change plan/commit, or replace screen clones without allocation evidence. Do
   not redesign prediction merely to avoid the bounded input clone; that belongs
   to later measured allocation work.
+
+## 3D-3: Retain terminal state, repaint, and measured prediction
+
+- **Status:** reviewed and verified on 2026-08-30
+- **Baseline and rollback:** Phase 3D-2 revision `e979785`
+- **Review:** SSP-indexed terminal snapshots preserve atomic application of
+  reordered authenticated differences. The last-painted snapshot owns
+  incremental output generation. Prediction's base and projection separately
+  own stock-ACK confirmation and speculative display. The bounded input clone
+  feeds client history while prediction borrows the original bytes. None is a
+  duplicate owner.
+- **Accepted change:** add the explicit erase-not-predicted regression required
+  by the necessity review. It covers a partial ACK, `0x08`, `0x7f`, and a mixed
+  printable-plus-erase batch without broadening prediction behavior.
+- **Expected simplification:** no production refactor. Retaining the current
+  boundaries avoids a new framebuffer abstraction, renderer contract, or
+  cross-owner prediction API whose maintenance cost exceeds current evidence.
+- **Preserved behavior:** authenticated terminal authority; atomic difference
+  application; bounded full and incremental VT paint; explicit repaint;
+  confirmed printable-ASCII epochs; authority on mismatch; and all public API,
+  wire, state-retention, and output limits.
+- **Characterization:** the new prediction test proves that partial
+  acknowledgement does not confirm an epoch and that erase or mixed input
+  clears pending display instead of entering the projection. Existing paint
+  tests independently reconstruct full, incremental, and resized output.
+- **Verification:** focused prediction and terminal tests, the stock local
+  prediction fixture, and the complete formatting, Clippy, and test suite.
+- **Rejected changes:** do not replace display-equivalence serialization with
+  an empty `vt100` diff merely to save an unmeasured temporary allocation. Do
+  not merge terminal snapshots with SSP, remove the painted snapshot, expose
+  cells, add a renderer trait, broaden prediction, or redesign the bounded
+  input path without allocation or compatibility evidence.
