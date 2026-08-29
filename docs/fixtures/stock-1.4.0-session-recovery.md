@@ -10,7 +10,8 @@
 The ignored recovery test placed a project-owned UDP relay between the private
 Session driver and an unmodified local stock server. The relay used one fixed
 client-facing endpoint and two server-facing UDP sockets with distinct source
-ports. It retained no datagrams or session material.
+ports. Shared test support retains only the latest server ciphertext in memory
+for the Session-isolation fixture; the recovery cases do not inspect it.
 
 After a shell marker arrived, the relay dropped both traffic directions. The
 test queued another command, held the outage for 1.5 seconds, switched to the

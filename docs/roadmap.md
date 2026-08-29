@@ -86,11 +86,17 @@ refactoring or behavior changes.
 - [x] Record a reviewable Phase 3 baseline revision after the existing Phase 2
   and public-API checks pass, so each later refactor has a known comparison and
   rollback point.
-- [ ] Prove through the public API that two interleaved sessions do not share
+- [x] Prove through the public API that two interleaved sessions do not share
   keys, endpoints, packets, input, VT output, terminal state, timers, errors,
   cancellation, or cleanup.
-- [ ] Cancel and drop each session independently; prove the other session keeps
+- [x] Cancel and drop each session independently; prove the other session keeps
   running and late events cannot enter a closed or replacement session.
+
+Phase 3A is complete as of 2026-08-30. Revision `288ce58` is the comparison and
+rollback baseline. A local stock 1.4.0 fixture now proves public-API isolation
+across two active Sessions and a replacement lifecycle, including wrong-key
+ciphertext, independent terminal state and timers, cancellation, owner drop,
+and late-packet rejection.
 
 ### Phase 3B: Collect external maintenance evidence
 

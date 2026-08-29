@@ -264,25 +264,30 @@ owned by the Session.
 
 The first public-contract suite proves `Connecting` and `Closed`, cancellation
 outside the command queue, invalid command rejection before queueing, output
-closure, and `OwnerDropped`. The public stock fixture additionally proves
-`Connecting` to `Active`, input, ordered VT output, full repaint, and
-`Cancelled` against stock 1.4.0. Phase 3 must still prove two concurrent public
-Sessions and cancellation at the remaining awaited boundaries.
+closure, and `OwnerDropped`. Public stock fixtures additionally prove
+`Connecting` to `Active`, input, ordered VT output, full repaint, `Cancelled`,
+and two-Session lifecycle isolation against stock 1.4.0. Cancellation at every
+remaining awaited boundary is still required before publication.
 
-Run at least two Sessions concurrently and deliberately interleave their
-datagrams, commands, timers, output and cancellation. Assert distinct keys,
-endpoints, peer changes, output queues, terminal states, errors and close
-events. Late packets and callbacks from an old Session lifecycle generation
-must not reach a new Session.
+The Phase 3A isolation fixture starts two public Sessions through distinct
+loopback relays. It injects Session A ciphertext from Session B's expected relay
+endpoint, interleaves unique input, uses different PTY sizes, and rebuilds both
+projections through full repaint. It then cancels A, verifies that A's output is
+closed and rejects a late packet, waits for B's independent heartbeat, and
+proves B still accepts input. A replacement Session rejects the old A packet;
+dropping B produces `OwnerDropped` while the replacement keeps running. This
+provides indirect public-contract evidence for distinct keys and direct
+evidence for isolated endpoints, packets, input, VT output, terminal state,
+timers, errors, cancellation, cleanup, and replacement lifecycles.
 
-The current fixtures cover bounded command and output channels, cancellation
-without a server, a stock 1.4.0 interactive shell through the public API,
-remote PTY resize, tmux attach, navigation, detach and reattach, a Vim
-full-screen edit and repaint, 128 ordered input commands, and 1,200 lines of
-output while the one-slot display queue is full. A loopback relay also covers
-a bounded outage, UDP source-port change, and server disappearance. They do not
-close the concurrent Session, late-event, long-outage, physical
-address-change, or remaining public-contract cases above.
+The current fixtures also cover bounded command and output channels,
+cancellation without a server, a stock 1.4.0 interactive shell, remote PTY
+resize, tmux attach and reattach, a Vim full-screen edit and repaint, 128
+ordered input commands, and 1,200 lines of output while the one-slot display
+queue is full. Loopback relays cover a bounded outage, UDP source-port change,
+server disappearance, and late authenticated ciphertext. They do not prove a
+long outage, physical address change, every cancellation boundary, HarmonyOS
+behavior, or LeanTTY lifecycle integration.
 
 ## Black-box stock-server interoperability
 
