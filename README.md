@@ -4,9 +4,41 @@ An independent, unofficial, wire-compatible Mosh client implementation in Rust.
 
 ## Status
 
-This project is in the protocol-definition stage. It does not yet provide a
-working Mosh session or a stable public API. The crate remains unpublished until
-the interoperability and security gates in [the roadmap](docs/roadmap.md) pass.
+Phase 1's bounded authenticated UDP core and Phase 2 are complete. Phase 3 now
+exports the first small Session API with explicit lifecycle state, prompt
+cancellation, bounded commands, and ordered VT output. Phase 2
+includes SSP synchronization, timing and recovery scheduling, bounded fragment
+reassembly, authoritative terminal state, VT painting, and a Session
+driver with bounded confirmed-epoch ASCII prediction. A local stock
+`mosh-server` 1.4.0 fixture completed an interactive shell exchange from
+bootstrap through prompt, input, output, full repaint, and cancellation.
+Additional loopback fixtures cover tmux attach, two-window
+navigation, detach and reattach, a Vim full-screen edit and repaint, 128 ordered
+input commands, 1,200 lines of output under display backpressure, and recovery
+after a 1.5-second bidirectional outage plus an authenticated UDP source-port
+change. A separate fixture proves that server disappearance leaves the Session
+locally repaintable and cancellable. A stock resize fixture verifies remote PTY
+changes from 80×24 to 100×30 and 60×20. A controlled-delay comparison records
+non-predictive medians of 108 ms and 189 ms at 80 ms and 160 ms imposed RTT,
+while the confirmed prediction epoch removes that visible network delay and
+still converges to a stock-server marker.
+
+The Phase 2 viability gate found no material terminal-correctness or recovery
+deficit within the declared local compatibility scope. Public contract tests
+cover validation, owner shutdown, state, and idempotent cancellation; a stock
+1.4.0 interactive fixture now drives the same public API. Concurrent-Session,
+fuzz, dependency, physical-network, and LeanTTY gates remain open. The crate
+stays unpublished until the later interoperability and security gates in
+[the roadmap](docs/roadmap.md) pass.
+
+## Library shape
+
+`Session::connect` returns a caller-owned `Session` handle and a `SessionTask`.
+The caller runs the task on its own Tokio executor, sends input or resize
+commands through the handle, consumes ordered VT chunks, and explicitly
+cancels or drops the Session. See
+[ADR 0007](docs/decisions/0007-public-session-api.md) for lifecycle and
+backpressure semantics.
 
 ## Goal
 
@@ -25,8 +57,14 @@ authentication, host verification, server startup, and terminal presentation.
 - No plugin framework or generic transport abstraction.
 - No server installation, file transfer, port forwarding, or session manager.
 
-See [architecture](docs/architecture.md), [compatibility](docs/compatibility.md),
-and [project decisions](docs/decisions/0001-project-scope-and-licensing.md).
+The [project principles](docs/project-principles.md) govern scope, architecture,
+dependencies, public API, testing, and LeanTTY integration. See also
+[architecture](docs/architecture.md), [protocol contract](docs/protocol-contract.md),
+[limits](docs/limits.md), [testing](docs/testing.md),
+[compatibility](docs/compatibility.md),
+[dependency assessment](docs/dependency-assessment.md),
+[implementation survey](docs/implementation-survey.md), and [project
+decisions](docs/decisions/).
 
 ## Independent implementation
 
@@ -35,6 +73,11 @@ organization, or tests. Protocol behavior must come from public specifications,
 papers, standards, documented black-box observations, or original analysis.
 Every nontrivial compatibility rule must record its source in
 [the provenance log](docs/provenance.md).
+
+Third-party implementations, including MoshCatty, `dart_mosh`, and `mosh-go`,
+may inform architecture hypotheses and tradeoffs. Project code and tests remain
+independently written, and third-party implementations do not replace
+independent wire evidence or stock-server interoperability verification.
 
 The project uses established, permissively licensed cryptographic primitives.
 It does not implement cryptographic algorithms from scratch.

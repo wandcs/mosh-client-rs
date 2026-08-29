@@ -2,9 +2,15 @@
 
 ## Authority
 
-Read `README.md`, `docs/decisions/`, `docs/architecture.md`,
-`docs/compatibility.md`, `docs/provenance.md`, and `docs/roadmap.md` before
-changing protocol behavior, dependencies, public API, or project scope.
+Read `docs/project-principles.md`, `README.md`, `docs/decisions/`,
+`docs/architecture.md`, `docs/compatibility.md`, `docs/dependency-policy.md`,
+`docs/dependency-assessment.md`, `docs/protocol-contract.md`, `docs/limits.md`,
+`docs/provenance.md`, and `docs/roadmap.md` before changing protocol behavior,
+dependencies, public API, limits, or project scope.
+
+`docs/project-principles.md` governs project direction and tradeoffs. Accepted
+decisions and technical documents apply those principles. If they conflict,
+stop and revise the lower-level decision or document before implementation.
 
 `docs/roadmap.md` is the only active work list. Historical experiments and
 unrecorded ideas do not authorize implementation.
@@ -23,8 +29,12 @@ unrecorded ideas do not authorize implementation.
 ## Licensing and provenance
 
 - New project code is `MIT OR Apache-2.0`.
+- Third-party implementations, including GPL-covered implementations, may be
+  inspected as hypothesis and architecture sources under `docs/provenance.md`.
 - Do not copy or translate GPL-covered source code, comments, file organization,
   or tests.
+- Keep stock Mosh source and schemas outside protocol derivation. Verify rules
+  first noticed elsewhere with independent evidence and stock-server fixtures.
 - Record every nontrivial wire or compatibility rule in `docs/provenance.md`.
 - Treat upstream binaries as black-box interoperability oracles only.
 - Audit every dependency for license, maintenance, security, target support,

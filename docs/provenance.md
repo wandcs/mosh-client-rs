@@ -11,8 +11,20 @@ or with every nontrivial compatibility rule.
 - packet captures produced by project-controlled fixtures with secrets removed;
 - original experiments and analysis written for this project.
 
-GPL-covered source code, comments, file organization, and tests are not project
-inputs and must not be copied or translated.
+## Hypothesis and architecture sources
+
+Third-party implementations, including GPL-covered implementations, may be
+inspected to form hypotheses and compare architectures, state ownership,
+resource policies, and engineering tradeoffs. They are not protocol authorities
+and cannot alone support a wire or compatibility rule.
+
+Do not copy or translate third-party source code, comments, tests, file
+organization, or other distinctive implementation expression. Write project
+code and tests independently. Verify any behavior first noticed in a third-party
+implementation with an allowed evidence class before accepting it here.
+
+Stock Mosh source code and schemas remain outside protocol derivation. Use
+unmodified released stock binaries only as black-box interoperability oracles.
 
 ## Entry template
 
@@ -53,3 +65,372 @@ Author:
   integration target.
 - Limits: the experiment did not prove HarmonyOS application lifecycle recovery,
   address roaming, terminal synchronization, or product value.
+
+### Stock bootstrap record
+
+- Date: 2026-08-29
+- Behavior: server startup output contains exactly one public connection record
+  shaped as `MOSH CONNECT <port> <key>`; the key is a 22-byte Base64 encoding of
+  the 128-bit AES session key.
+- Evidence class: public command contract and project-controlled black-box
+  observation.
+- Source: [Mosh overview](https://mosh.org/), public
+  [`mosh-server` manual](https://github.com/mobile-shell/mosh/blob/master/man/mosh-server.1),
+  public [`mosh-client` manual](https://manpages.ubuntu.com/manpages/noble/man1/mosh-client.1.html),
+  and [stock 1.4.0 bootstrap observation](fixtures/stock-1.4.0-bootstrap.md).
+- Observed version: unmodified Ubuntu `mosh-server` 1.4.0.
+- Implementation consequence: scan at most 4 KiB and 64 lines of raw output;
+  require exactly one ASCII record with four single-space-separated fields;
+  accept a decimal port from 1 through 65535; strictly decode exactly 22
+  unpadded standard-Base64 bytes into a 16-byte zeroizing buffer; never include
+  input or key material in `Debug` or errors.
+- Limits: surrounding process output is non-semantic and may contain arbitrary
+  bytes. The initial endpoint address is caller-supplied as a typed IPv4 value.
+  This rule establishes bootstrap syntax only, not packet compatibility.
+
+### Published SSP behavior
+
+- Date: 2026-08-29
+- Behavior: SSP uses separate client-to-server and server-to-client state
+  streams, a 63-bit sequence plus direction, authenticated AES-128-OCB, 16-bit
+  timestamps, RTT-based retransmission, bounded sender state, delayed
+  acknowledgements, adaptive frames, heartbeats, and authenticated client
+  roaming.
+- Evidence class: public paper and cryptographic standard.
+- Source: [Mosh final paper](https://mosh.org/mosh-paper.pdf),
+  [detailed draft](https://mosh.org/mosh-paper-draft.pdf), and
+  [RFC 7253](https://www.rfc-editor.org/rfc/rfc7253.html). RTT equations and
+  the pre-sample one-second default come from
+  [RFC 6298](https://www.rfc-editor.org/rfc/rfc6298.html).
+- Observed version: published protocol design; exact wire compatibility checked
+  separately against stock 1.4.0.
+- Implementation consequence: use the documented state and timer model, fixed
+  12-byte OCB nonce, 16-byte tag, 50 ms minimum RTO, 100 ms delayed ack,
+  15 ms state collection, 20–250 ms frame interval, three-second heartbeat, and
+  at most 32 retained sender states. Use only RFC 6298's SRTT, RTTVAR, RTO, and
+  initial-value rules; the paper does not establish TCP's congestion control or
+  retransmission backoff as SSP behavior.
+- Limits: the papers do not define all Protocol Buffers fields, nested terminal
+  instructions, or malformed-input behavior.
+
+### Authenticated datagram and fragment envelope
+
+- Date: 2026-08-29
+- Behavior: the UDP datagram starts with a big-endian direction/sequence word;
+  OCB3 authenticates the remainder with nonce `00000000 || header`; plaintext
+  contains two big-endian timestamps, a big-endian fragment identifier, and a
+  big-endian fragment word whose high bit marks the final fragment.
+- Evidence class: project-controlled black-box observation.
+- Source: [stock 1.4.0 loopback observation](fixtures/stock-1.4.0-loopback.md)
+  and [fixed-key client packet fixture](fixtures/stock-1.4.0-client-packet.md).
+- Observed versions: unmodified Ubuntu `mosh-client` 1.4.0 and `mosh-server`
+  1.4.0.
+- Implementation consequence: implement the envelope exactly, authenticate
+  before parsing or changing replay state, clear candidate plaintext after
+  authentication failure, and reject duplicate or too-old authentic packets
+  with a 64-sequence local window.
+- Limits: the stock fixture proves one client-to-server packet with sequence
+  zero. Both earlier sessions used one-fragment messages and no impaired
+  network. The 64-sequence replay window is local policy; stock behavior beyond
+  that distance and multi-fragment conflict rules remain unresolved.
+
+### Compression and top-level transport instruction
+
+- Date: 2026-08-29
+- Behavior: fragment reassembly yields one zlib stream. Decompression yields a
+  Protocol Buffers instruction with varint fields 1–5 and length-delimited
+  fields 6–7. Field 1 was protocol version 2 in every observed message.
+- Evidence class: project-controlled black-box observation, interpreted with
+  the public [Protocol Buffers encoding guide](https://protobuf.dev/programming-guides/encoding/).
+- Source: [stock 1.4.0 loopback observation](fixtures/stock-1.4.0-loopback.md).
+- Observed versions: unmodified Ubuntu `mosh-client` 1.4.0 and `mosh-server`
+  1.4.0.
+- Implementation consequence: use bounded zlib and original hand-declared
+  message types; do not import an upstream schema.
+- Limits: the top-level state-number roles agree with the published SSP design,
+  but nested terminal semantics remain partially unnamed.
+
+### Initial terminal size shape
+
+- Date: 2026-08-29
+- Behavior: an 80-by-24 initial client message placed width 80 at nested field
+  path `6 → 1 → 3 → 5` and height 24 at `6 → 1 → 3 → 6`.
+- Evidence class: project-controlled black-box observation.
+- Source: [stock 1.4.0 loopback observation](fixtures/stock-1.4.0-loopback.md).
+- Observed versions: unmodified Ubuntu `mosh-client` 1.4.0 and `mosh-server`
+  1.4.0.
+- Implementation consequence: this shape may support the smallest Phase 1
+  authenticated exchange and resize fixture.
+- Limits: later input and resize fixtures name the initial client fields. Host
+  screen operations and malformed nested-message behavior remain unresolved.
+
+### Client input and resize operation semantics
+
+- Date: 2026-08-29
+- Behavior: the client-to-server state difference is an ordered operation
+  history. Operation path `1 → 2 → 4` appends exact input bytes. Operation path
+  `1 → 3 → 5/6` sets terminal columns and rows. A difference may retain an
+  earlier resize or repeat the new size; the final ordered size is current.
+- Evidence class: published protocol description and project-controlled
+  black-box observation.
+- Source: [Mosh detailed draft](https://mosh.org/mosh-paper-draft.pdf) and the
+  [stock 1.4.0 client input/resize fixture](fixtures/stock-1.4.0-client-input-resize.md).
+- Observed version: unmodified Ubuntu `mosh-client` 1.4.0.
+- Implementation consequence: hand-declare only these verified client
+  operation fields. Preserve input as bounded bytes without UTF-8 normalization
+  at the transport layer. Apply resize records in order and keep the final
+  validated size.
+- Limits: the controlled input was `x中`; sizes were 80×24 and 81×25. The
+  fixture does not define malformed operations, byte limits beyond local policy,
+  host screen operations, prediction, or alternate-screen behavior.
+
+### Project-generated initial stock-server exchange
+
+- Date: 2026-08-29
+- Behavior: stock 1.4.0 accepts the project's protocol-version-2 client state
+  `0 → 1` initial packet and returns server sequence zero acknowledging client
+  state one.
+- Evidence class: project-controlled black-box interoperability fixture.
+- Source: [stock 1.4.0 project-generated initial exchange](fixtures/stock-1.4.0-server-exchange.md).
+- Observed version: unmodified Ubuntu `mosh-server` 1.4.0.
+- Implementation consequence: independently encode the verified 80-by-24
+  initial nested shape, one exact zlib stream, a single final fragment, and the
+  authenticated envelope. Decode the response in the reverse order and require
+  protocol version 2.
+- Limits: the accepted packet used timestamp zero, absent timestamp reply,
+  fragment identifier and number zero, and one fixed zero chaff byte. It proves
+  only the first acknowledgement, not synchronization, terminal semantics,
+  retransmission, fragmentation, or roaming.
+
+### Stock multi-fragment response and bounded reassembly
+
+- Date: 2026-08-29
+- Behavior: stock 1.4.0 emits one compressed server instruction across multiple
+  numbered fragments. The project decoder reconstructs that instruction after
+  reverse-order delivery. Omitting fragment zero leaves no decodable
+  instruction and the retained remainder expires at the local 10-second bound.
+- Evidence class: project-controlled black-box interoperability fixture plus
+  original deterministic resource and conflict tests.
+- Source: [stock 1.4.0 multi-fragment response](fixtures/stock-1.4.0-multifragment.md).
+- Observed version: unmodified Ubuntu `mosh-server` 1.4.0.
+- Implementation consequence: group authenticated fragments by identifier;
+  concatenate only a complete zero-through-final range; make exact duplicates
+  idempotent; discard contradictory groups; and clear incomplete state on
+  expiry or owner cleanup.
+- Limits: the project retains at most 749 fragments, one incomplete identifier,
+  and 1 MiB total for 10 seconds from the first fragment. These are local
+  defensive policies. The fixture does not establish stock retransmission,
+  identifier reuse, malformed conflict handling, terminal semantics, or
+  full-session recovery.
+
+### SSP synchronization state selection
+
+- Date: 2026-08-29
+- Behavior: the sender targets its latest state, uses a recent unexpired sent
+  state as the assumed receiver reference, falls back to the known acknowledged
+  state after RTO, and sends empty-difference states for acknowledgements. The
+  receiver constructs targets only from saved references, keeps the greatest
+  constructed state as current, and discards references below the sender's
+  throwaway number.
+- Evidence class: public protocol paper plus the project-controlled initial
+  stock exchange.
+- Source: [Mosh detailed draft](https://mosh.org/mosh-paper-draft.pdf),
+  [Mosh final paper](https://mosh.org/mosh-paper.pdf), and the
+  [initial exchange fixture](fixtures/stock-1.4.0-server-exchange.md).
+- Observed version: published SSP design and unmodified Ubuntu
+  `mosh-server` 1.4.0.
+- Implementation consequence: keep sender and receiver state transitions
+  deterministic; separate plan from commit; accept reordered constructible
+  targets once; advance acknowledgements only to retained states actually sent;
+  allocate a new state number for an empty acknowledgement; and fall back to
+  the known receiver reference after RTO.
+- Limits: the sender's 32-state bound follows the paper. The receiver keeps the
+  throwaway floor plus the newest 31 references as a local memory bound.
+  Unknown acknowledgements, unavailable references, generation exhaustion, and
+  stale plans fail or wait without changing authoritative state. Terminal
+  differences and broader stock behavior under impaired networks require later
+  fixtures.
+
+### SSP datagram timing and client roaming
+
+- Date: 2026-08-29
+- Behavior: an outgoing datagram carries the low 16 bits of a monotonic
+  millisecond clock. A recent received timestamp is echoed after adding local
+  reply delay. Only an in-sequence timestamp reply updates RTT. The client
+  keeps the server address fixed; a newer authentic client packet lets the
+  server learn a changed client address. An idle heartbeat supplies that packet.
+- Evidence class: public protocol paper, IETF retransmission standard, and
+  original deterministic simulation.
+- Source: [Mosh detailed draft](https://mosh.org/mosh-paper-draft.pdf),
+  [RFC 6298](https://www.rfc-editor.org/rfc/rfc6298.html), and the project-owned
+  virtual network in `tests/support/network.rs`.
+- Observed version: published SSP design. The recovery simulation uses only
+  project-generated authenticated packets; it is not a stock-binary claim.
+- Implementation consequence: keep integer SRTT and RTTVAR state; start RTO at
+  one second; clamp it to the 50 ms Mosh floor and a local 5 s ceiling; pace
+  frames at half SRTT within 20–250 ms; collect state for 15 ms; delay an ack no
+  more than 100 ms; send a heartbeat after three idle seconds; coalesce expired
+  reasons after a clock jump; and reject incoming datagrams whose source is not
+  the bootstrapped server endpoint before replay state changes.
+- Limits: samples above 60 seconds are ignored as ambiguous under the 16-bit
+  clock. A reply that would encode as the `0xffff` no-reply marker is omitted.
+  These are conservative local policies pending a focused stock fixture. The
+  five-second maximum RTO is also local policy. Deterministic coverage proves a
+  dropped authenticated state can be retransmitted after RTO from a changed
+  client source address to the same server, acknowledged, and cancelled without
+  retained work; real socket and stock-server roaming remain later evidence.
+
+### Stock terminal difference and policy resets
+
+- Date: 2026-08-29
+- Behavior: a server terminal difference contains ordered operations. Path
+  `1 → 2 → 4` carries a self-contained UTF-8 VT framebuffer patch;
+  `1 → 3 → 5/6` carries columns and rows; and observed path `1 → 7 → 8` carries
+  a varint echo acknowledgement. Stock initialization resets mouse highlight
+  tracking, focus reporting, and urxvt mouse encoding with `CSI ?1001l`,
+  `CSI ?1004l`, and `CSI ?1015l`.
+- Evidence class: project-controlled black-box interoperability fixture and the
+  earlier sanitized field-shape observation.
+- Source: [stock terminal-state fixture](fixtures/stock-1.4.0-terminal-state.md)
+  and [stock loopback observation](fixtures/stock-1.4.0-loopback.md).
+- Observed version: unmodified Ubuntu `mosh-server` 1.4.0.
+- Implementation consequence: decode the three known operation shapes, apply
+  display operations in order to a cloned reference screen, and route echo
+  acknowledgements only to the separate prediction layer. Accept the three
+  verified reset-only policy sequences among otherwise unsupported CSI. A full
+  repaint emits the same resets before synthesized terminal state. The later
+  Vim fixture below adds one independently observed focus-reporting set
+  sequence.
+- Limits: the fixture controlled an 81×25 screen and the UTF-8 marker `A中Z`.
+  It proved production decode, reference-state application, resize, wide-cell
+  preservation, and stock initialization. It did not prove interactive shell,
+  editor, alternate-screen, mouse, focus, clipboard, prediction, or sustained
+  output behavior.
+
+### Public Session interactive shell and repaint
+
+- Date: 2026-08-29
+- Behavior: the public Session API completed a stock 1.4.0 loopback
+  Session, painted a controlled interactive shell prompt, delivered a command,
+  painted its marker, regenerated that state for a replacement terminal, and
+  cancelled without leaving the client task running.
+- Evidence class: project-controlled black-box interoperability fixture.
+- Source: [Session fixture](fixtures/stock-1.4.0-private-session.md) and
+  `stock_1_4_0_public_session_drives_an_interactive_shell`.
+- Observed version: unmodified Ubuntu `mosh-server` 1.4.0 on Ubuntu 26.04 WSL
+  x86-64.
+- Implementation consequence: the Session future owns UDP reads and writes,
+  authenticated packet sequencing, fragment identifiers, SSP commits,
+  monotonic timers, retained client operations, terminal references, bounded
+  output, repaint, and cancellation. The caller owns the runtime and bootstrap
+  process.
+- Limits: this fixture proves one loopback shell command and repaint. It does
+  not establish latency, resize, tmux, editor, alternate-screen, sustained-I/O,
+  outage, roaming, multi-Session, HarmonyOS runtime, or crate publication
+  readiness.
+
+### Stock tmux, Vim, focus policy, and sustained I/O
+
+- Date: 2026-08-29
+- Behavior: one private Session drove tmux attach, two-window navigation,
+  detach and reattach, then a Vim full-screen edit, replacement-surface repaint,
+  and shell restoration. A second Session preserved 128 ordered shell updates
+  and converged after 1,200 output lines while its one-slot display queue
+  remained full for 500 ms. Vim's authenticated terminal update contained
+  `CSI ?1004h` before the visible editor state.
+- Evidence class: project-controlled black-box interoperability fixture and
+  local public terminfo data.
+- Source: [private Session fixture](fixtures/stock-1.4.0-private-session.md),
+  `stock_1_4_0_private_session_supports_tmux_vim_and_full_screen_repaint`, and
+  `stock_1_4_0_private_session_preserves_sustained_io_under_output_backpressure`.
+- Observed versions: unmodified Ubuntu `mosh-server` 1.4.0, tmux 3.6, and Vim
+  9.1.2141 on Ubuntu 26.04 WSL x86-64. The profile was
+  `TERM=xterm-256color`, `LANG=C.UTF-8`, 80 columns, and 24 rows. Tmux used an
+  isolated socket and no user configuration; Vim used no user configuration,
+  swap file, or viminfo.
+- Implementation consequence: suppress the verified `CSI ?1004h` focus toggle
+  without forwarding it or claiming focus-event support. Continue to reject
+  unverified policy sets. Treat alternate-screen compatibility as visible
+  full-screen convergence, repaint, and exit restoration; do not require the
+  local projection to retain the remote alternate-buffer flag.
+- Limits: the fixtures used IPv4 loopback without packet impairment. They do
+  not prove focus-event delivery, mouse modes, local alternate-buffer history,
+  Session resize, latency, outage recovery, roaming, concurrent Sessions,
+  HarmonyOS runtime, or a stable public API.
+
+### Stock Session remote PTY resize
+
+- Date: 2026-08-30
+- Behavior: the private Session started at 80×24, then requested 100×30 and
+  60×20. The remote shell's `stty size` reported 24×80, 30×100, and 20×60. A
+  replacement 60×20 VT projection recovered the final marker from an explicit
+  full repaint.
+- Evidence class: project-controlled black-box interoperability fixture.
+- Source: [private Session fixture](fixtures/stock-1.4.0-private-session.md) and
+  `stock_1_4_0_private_session_resizes_the_remote_pty_and_repaints`.
+- Observed version: unmodified Ubuntu `mosh-server` 1.4.0 on Ubuntu 26.04 WSL
+  x86-64, IPv4 loopback, `TERM=xterm-256color`, and `LANG=C.UTF-8`.
+- Implementation consequence: keep resize as an ordered Session command, end
+  local prediction, synchronize the remote PTY size, resize the consumer-owned
+  surface, and regenerate authority after a surface replacement.
+- Limits: the fixture covers three ordinary sizes within existing bounds. It
+  does not prove rapid resize storms, concurrent resize and outage, physical
+  device layout, or xterm.js integration.
+
+### Stock Session outage, source-port change, and server disappearance
+
+- Date: 2026-08-29
+- Behavior: a private Session recovered a command after a test-only relay
+  dropped both traffic directions for 1.5 seconds and changed the authenticated
+  client UDP source port. Stock 1.4.0 replied to the new source port. After a
+  separate server process disappeared, the Session remained locally
+  repaintable and cancellable beyond one heartbeat interval.
+- Evidence class: project-controlled black-box interoperability fixture.
+- Source: [Session recovery fixture](fixtures/stock-1.4.0-session-recovery.md),
+  `stock_1_4_0_private_session_recovers_after_outage_and_source_port_change`,
+  and
+  `stock_1_4_0_private_session_remains_controllable_after_server_disappears`.
+- Observed version: unmodified Ubuntu `mosh-server` 1.4.0 on Ubuntu 26.04 WSL
+  x86-64, `TERM=xterm-256color`, `LANG=C.UTF-8`, 80 columns, and 24 rows.
+- Implementation consequence: keep the bootstrapped server endpoint fixed;
+  let newer authenticated client traffic teach the server a changed return
+  address. Treat silence as recoverable until explicit lifecycle policy closes
+  the Session. Keep impairment transport test-only.
+- Limits: the relay changed a loopback source port, not an interface, IP
+  address, NAT, or remote network. The fixture does not prove long outage,
+  suspend, latency, SSH comparison, server restart, concurrent Sessions,
+  HarmonyOS behavior, or a stable public API.
+
+### Stock echo acknowledgement and bounded local prediction
+
+- Date: 2026-08-30
+- Behavior: independently encoded client state 2 containing one printable byte
+  produced stock transport acknowledgement 2 and terminal echo
+  acknowledgement 2. With fixed 40 ms and 80 ms delay in each relay direction,
+  non-predictive median visible echo was 108 ms and 189 ms. After three
+  authoritative characters established a conservative epoch, predictive
+  median visible echo was 0 ms in both delayed cases. A controlled marker
+  command subsequently proved authoritative convergence.
+- Evidence class: project-controlled black-box interoperability fixture and
+  project-generated comparative timing measurement.
+- Source: [local-prediction fixture](fixtures/stock-1.4.0-local-prediction.md),
+  `stock_1_4_0_echo_acknowledges_the_controlled_input_operation`, and
+  `stock_1_4_0_prediction_reduces_measured_interactive_echo_latency`.
+- Observed version: unmodified Ubuntu `mosh-server` 1.4.0 on Ubuntu 26.04 WSL
+  x86-64, IPv4 loopback, `TERM=xterm-256color`, `LANG=C.UTF-8`, 80 columns, and
+  24 rows.
+- Implementation consequence: use echo acknowledgement as client-state
+  evidence for a tentative epoch. Keep authority separate from a projection of
+  at most 32 printable ASCII bytes for at most ten seconds. One mismatch or any
+  ineligible input clears the projection. Do not infer prediction success from
+  a local timeout.
+- Architecture comparisons: the
+  [Mosh paper](https://mosh.org/mosh-paper.pdf),
+  [MoshCatty](https://github.com/binaricat/MoshCatty), and
+  [mosh-go](https://github.com/unixshells/mosh-go) informed the options and
+  failure analysis only. No third-party wire rule, code, test, or file layout
+  was adopted.
+- Limits: the measurement covers the private Rust Session and independent VT
+  projection on delayed loopback. It does not prove LeanTTY rendering, a
+  physical network, jitter, loss, Unicode, backspace, paste, or editor
+  prediction.
