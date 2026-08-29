@@ -384,6 +384,8 @@ src/
     state.rs             authoritative screen and modes
     paint.rs             deterministic bounded VT output
   session.rs             production driver, commands, events and cleanup
+  session/
+    client_history.rs    bounded client operations and SSP checkpoints
 
 tests/
   support/               deterministic bounded network and safe fixtures

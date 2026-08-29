@@ -35,3 +35,37 @@ reviewable and reversible.
   cancellation into the command queue, adding subtasks, or changing remote
   close and local-I/O policy. None is needed to remove the duplicated private
   lifecycle representation.
+
+## 3D-2: Isolate client operation history
+
+- **Status:** implemented and verified on 2026-08-30
+- **Rollback:** Phase 3D-1 revision `2711b7c`
+- **Review:** keep SSP plan/commit, generations, dispositions, semantic discard
+  floors, and reported evictions unchanged. They already form one deterministic
+  synchronization boundary. Keep SSP-indexed terminal snapshots in the Session
+  driver because it applies terminal differences and consumes synchronization
+  commit results; a forwarding wrapper would not remove an invariant.
+- **Problem:** `ClientHistory` owns a separate bounded operation log, monotonic
+  operation indexes, SSP checkpoints, difference encoding, ACK prefix release,
+  and sender-eviction cleanup, but its implementation and tests lived inside
+  the Session driver module.
+- **Change:** move `ClientHistory` and its focused tests to a private Session
+  submodule. Add a characterization proving that an ACK for an older sent state
+  cannot remove later input before that input is sent.
+- **Expected simplification:** make the cumulative client object and its
+  invariants reviewable without exposing it publicly or splitting the crate.
+  The Session driver keeps orchestration; the submodule owns operation-history
+  representation.
+- **Preserved behavior:** operation order and bytes; resize ordering; state
+  checkpoints; cumulative differences; ACK release; sender-capacity eviction;
+  all existing limits, errors, wire encoding, and public API.
+- **Characterization:** the new test passed both before and after the move.
+  Existing synchronization tests cover unknown, stale, reordered, and retained
+  acknowledgements. The stock sustained-I/O fixture remains the smallest
+  end-to-end proof of ordered client history.
+- **Verification:** focused `ClientHistory` and synchronization tests, the stock
+  sustained-I/O fixture, and the complete formatting, Clippy, and test suite.
+- **Rejected changes:** do not wrap the terminal-state map, merge it into SSP,
+  change plan/commit, or replace screen clones without allocation evidence. Do
+  not redesign prediction merely to avoid the bounded input clone; that belongs
+  to later measured allocation work.
