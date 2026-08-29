@@ -250,7 +250,7 @@ impl SessionTask {
         let state = self.driver.state_tx.clone();
         let result = self.driver.run().await;
         state.send_replace(SessionState::Closed);
-        result.map(SessionExit::from).map_err(SessionError::from)
+        result.map_err(SessionError::from)
     }
 }
 
@@ -259,13 +259,6 @@ pub(crate) enum SessionCommand {
     Input(Vec<u8>),
     Resize { columns: u32, rows: u32 },
     Repaint,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum SessionClose {
-    Cancelled,
-    CommandChannelClosed,
-    OutputChannelClosed,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -309,17 +302,6 @@ from_error!(PaintError, Paint);
 impl From<std::io::Error> for DriverError {
     fn from(error: std::io::Error) -> Self {
         Self::Io(error.kind())
-    }
-}
-
-impl From<SessionClose> for SessionExit {
-    fn from(close: SessionClose) -> Self {
-        match close {
-            SessionClose::Cancelled => Self::Cancelled,
-            SessionClose::CommandChannelClosed | SessionClose::OutputChannelClosed => {
-                Self::OwnerDropped
-            }
-        }
     }
 }
 
@@ -460,12 +442,12 @@ impl SessionDriver {
         ))
     }
 
-    pub(crate) async fn run(mut self) -> Result<SessionClose, DriverError> {
+    pub(crate) async fn run(mut self) -> Result<SessionExit, DriverError> {
         let mut inbound = [0_u8; MAX_DATAGRAM_BYTES];
 
         loop {
             if *self.cancellation_rx.borrow() {
-                return Ok(SessionClose::Cancelled);
+                return Ok(SessionExit::Cancelled);
             }
             let now_ms = self.now_ms()?;
             self.reassembler.expire(now_ms)?;
@@ -478,8 +460,9 @@ impl SessionDriver {
                 self.synchronization.latest_unacknowledged_sent_at_ms(),
             )? {
                 SchedulerPoll::Send(plan) => {
-                    if self.send_instruction(plan, now_ms).await? {
-                        return Ok(SessionClose::Cancelled);
+                    self.send_instruction(plan, now_ms).await?;
+                    if *self.cancellation_rx.borrow() {
+                        return Ok(SessionExit::Cancelled);
                     }
                 }
                 SchedulerPoll::Pending { wake_at_ms } => {
@@ -503,19 +486,14 @@ impl SessionDriver {
                     )
                     .await
                     {
-                        Wake::Command(Some(command)) => {
-                            if let Some(close) = self.handle_command(command)? {
-                                return Ok(close);
-                            }
-                        }
-                        Wake::Command(None) => return Ok(SessionClose::CommandChannelClosed),
+                        Wake::Command(command) => self.handle_command(command)?,
                         Wake::Datagram(result) => {
                             let (length, source) = result?;
                             self.handle_datagram(&mut inbound[..length], source)?;
                         }
                         Wake::Output(permit) => self.emit_output(permit)?,
-                        Wake::OutputClosed => return Ok(SessionClose::OutputChannelClosed),
-                        Wake::Cancelled => return Ok(SessionClose::Cancelled),
+                        Wake::OwnerDropped => return Ok(SessionExit::OwnerDropped),
+                        Wake::Cancelled => return Ok(SessionExit::Cancelled),
                         Wake::Timer => {}
                     }
                 }
@@ -533,15 +511,12 @@ impl SessionDriver {
             .map_err(|_| DriverError::ClockExhausted)
     }
 
-    fn handle_command(
-        &mut self,
-        command: SessionCommand,
-    ) -> Result<Option<SessionClose>, DriverError> {
+    fn handle_command(&mut self, command: SessionCommand) -> Result<(), DriverError> {
         let now_ms = self.now_ms()?;
         match command {
             SessionCommand::Input(bytes) => {
                 if bytes.is_empty() {
-                    return Ok(None);
+                    return Ok(());
                 }
                 let state = self.advance_client(ClientOperation::Input(bytes.clone()), now_ms)?;
                 let latest = self.synchronization.remote_latest();
@@ -578,7 +553,7 @@ impl SessionDriver {
                 self.force_full_repaint = true;
             }
         }
-        Ok(None)
+        Ok(())
     }
 
     fn advance_client(
@@ -597,7 +572,7 @@ impl SessionDriver {
         &mut self,
         wake_plan: WakePlan,
         now_ms: u64,
-    ) -> Result<bool, DriverError> {
+    ) -> Result<(), DriverError> {
         let send_plan = match self.synchronization.plan_send(
             now_ms,
             self.datagram_timing.estimator().retransmission_timeout_ms(),
@@ -626,7 +601,7 @@ impl SessionDriver {
 
         for (number, body) in compressed.chunks(MAX_FRAGMENT_BODY_BYTES).enumerate() {
             if *self.cancellation_rx.borrow() {
-                return Ok(true);
+                return Ok(());
             }
             let number =
                 u16::try_from(number).map_err(|_| DriverError::FragmentIdentifierExhausted)?;
@@ -660,7 +635,7 @@ impl SessionDriver {
             self.client_history.remove_checkpoint(evicted);
         }
         self.scheduler.commit_send(wake_plan)?;
-        Ok(false)
+        Ok(())
     }
 
     fn handle_datagram(
@@ -767,10 +742,10 @@ impl SessionDriver {
 }
 
 enum Wake {
-    Command(Option<SessionCommand>),
+    Command(SessionCommand),
     Datagram(Result<(usize, SocketAddr), std::io::Error>),
     Output(OwnedPermit<Vec<u8>>),
-    OutputClosed,
+    OwnerDropped,
     Cancelled,
     Timer,
 }
@@ -795,7 +770,10 @@ async fn wait_next(
             return Poll::Ready(Wake::Cancelled);
         }
         if let Poll::Ready(command) = command.as_mut().poll(context) {
-            return Poll::Ready(Wake::Command(command));
+            return Poll::Ready(match command {
+                Some(command) => Wake::Command(command),
+                None => Wake::OwnerDropped,
+            });
         }
         if timer.as_mut().poll(context).is_ready() {
             return Poll::Ready(Wake::Timer);
@@ -804,7 +782,7 @@ async fn wait_next(
             if let Poll::Ready(permit) = output.as_mut().poll(context) {
                 return Poll::Ready(match permit {
                     Ok(permit) => Wake::Output(permit),
-                    Err(_) => Wake::OutputClosed,
+                    Err(_) => Wake::OwnerDropped,
                 });
             }
         }

@@ -13,7 +13,8 @@
 
 The [Phase 3 mechanism necessity review](necessity-review.md) records which
 implemented mechanisms the stabilized library keeps and which behavior remains
-deferred before code-structure work begins.
+deferred before code-structure work begins. Accepted behavior-preserving
+changes are tracked in the [Phase 3 refactoring log](refactoring-log.md).
 
 ## Design summary
 

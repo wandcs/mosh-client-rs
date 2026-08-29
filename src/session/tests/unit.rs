@@ -64,6 +64,6 @@ fn cancellation_closes_the_private_driver_without_a_server() {
             .unwrap()
             .unwrap();
 
-        assert_eq!(close, SessionClose::Cancelled);
+        assert_eq!(close, SessionExit::Cancelled);
     });
 }

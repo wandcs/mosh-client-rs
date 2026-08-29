@@ -422,7 +422,7 @@ async fn start_private_session(
 ) -> (
     TestSessionCommands,
     mpsc::Receiver<Vec<u8>>,
-    JoinHandle<Result<SessionClose, DriverError>>,
+    JoinHandle<Result<SessionExit, DriverError>>,
 ) {
     start_private_session_with_prediction(bootstrap, true).await
 }
@@ -433,7 +433,7 @@ async fn start_private_session_with_prediction(
 ) -> (
     TestSessionCommands,
     mpsc::Receiver<Vec<u8>>,
-    JoinHandle<Result<SessionClose, DriverError>>,
+    JoinHandle<Result<SessionExit, DriverError>>,
 ) {
     let (mut driver, channels) = SessionDriver::connect(bootstrap, 80, 24)
         .await
@@ -466,7 +466,7 @@ async fn start_private_session_with_prediction(
 
 async fn cancel_session(
     commands: &TestSessionCommands,
-    task: JoinHandle<Result<SessionClose, DriverError>>,
+    task: JoinHandle<Result<SessionExit, DriverError>>,
 ) {
     commands.cancel();
     let close = tokio::time::timeout(Duration::from_secs(2), task)
@@ -474,7 +474,7 @@ async fn cancel_session(
         .expect("cancelled stock Session did not stop")
         .unwrap()
         .unwrap_or_else(|error| panic!("private Session failed: {error:?}"));
-    assert_eq!(close, SessionClose::Cancelled);
+    assert_eq!(close, SessionExit::Cancelled);
 }
 
 struct TestSessionCommands {
