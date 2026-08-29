@@ -11,6 +11,10 @@
 > [0005](decisions/0005-bounded-local-prediction.md), and
 > [0006](decisions/0006-phase-2-core-viability-gate.md)
 
+The [Phase 3 mechanism necessity review](necessity-review.md) records which
+implemented mechanisms the stabilized library keeps and which behavior remains
+deferred before code-structure work begins.
+
 ## Design summary
 
 `mosh-client-rs` is one independent, unofficial Rust client library for the
@@ -423,6 +427,11 @@ exist to fuzz.
 The initial design defers:
 
 - prediction beyond the measured single-byte printable ASCII epoch;
+- recognition of remote clean exit until its authenticated stock wire signal is
+  independently observed;
+- recovery from selected local UDP send errors until platform evidence defines
+  which errors are temporary and how retries remain paced;
+- public reachability or disconnected state;
 - a public terminal-cell or screen-snapshot API;
 - terminal profiles beyond the first verified UTF-8 VT target;
 - complete or persistent scrollback;

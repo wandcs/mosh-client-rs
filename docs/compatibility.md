@@ -72,6 +72,7 @@ output contract, and physical LeanTTY acceptance are defined in
 ## Deferred compatibility
 
 IPv6, configurable port ranges, prediction modes, locale negotiation, broad
-terminal application coverage, and non-LeanTTY consumers require separate
-evidence. ProxyJump applies only to an embedding application's SSH bootstrap;
-it does not imply UDP reachability.
+terminal application coverage, clean remote-exit recognition, recoverable
+local UDP send errors, reachability events, and non-LeanTTY consumers require
+separate evidence. ProxyJump applies only to an embedding application's SSH
+bootstrap; it does not imply UDP reachability.

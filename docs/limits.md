@@ -60,8 +60,9 @@ rather than being silently dropped.
 
 Retries have no fixed count because Mosh is designed to survive long outages.
 Rate, retained state, and memory remain bounded. The Session stays recoverable
-until the caller cancels it, the authenticated peer closes it, a sequence is
-exhausted, or an unrecoverable protocol error occurs.
+until the caller cancels it, a sequence is exhausted, or an unrecoverable
+protocol or local I/O error occurs. Recognizing a clean authenticated peer exit
+is deferred until a stock fixture establishes its wire signal.
 
 ## Terminal
 

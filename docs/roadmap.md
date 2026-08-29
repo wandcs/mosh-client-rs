@@ -124,22 +124,31 @@ added.
 
 ### Phase 3C: Review necessity before code structure
 
-- [ ] Review each major mechanism against the project principles, protocol
+- [x] Review each major mechanism against the project principles, protocol
   contract, paper and specifications, measured behavior, stock fixtures, and
   Phase 3B evidence. Use the paper as design evidence, not a completeness
   requirement. Classify the mechanism as **keep**, **simplify**, **remove**, or
   **defer**; record its user value, evidence, resource cost, maintenance cost,
   compatibility risk, and rollback.
-- [ ] Cover the Session driver and wake path; lifecycle, cancellation, and
+- [x] Cover the Session driver and wake path; lifecycle, cancellation, and
   backpressure; `ClientHistory` and SSP checkpoints; retained terminal state;
   fragmentation; repaint and prediction; timers and recovery; and the public
   event surface.
-- [ ] Prefer the smallest design that preserves the supported Mosh core path.
+- [x] Prefer the smallest design that preserves the supported Mosh core path.
   Do not preserve paper-complete behavior, abstractions, caches, state, or
   branches without a current contract or demonstrated interoperability need.
-- [ ] Revise the governing decision or technical document before changing code
+- [x] Revise the governing decision or technical document before changing code
   when the review conflicts with an accepted design. Require independent
   protocol evidence and the smallest stock fixture for wire changes.
+
+Phase 3C is complete as of 2026-08-30. The
+[mechanism necessity review](necessity-review.md) keeps the single-owner Session,
+bounded lifecycle and output paths, SSP operation history and checkpoints,
+retained terminal snapshots, fragmentation, repaint, the measured prediction
+subset, and deterministic recovery timers. It admits only behavior-preserving
+private simplification in Phase 3D. Remote clean exit, selected temporary UDP
+send recovery, reachability events, broader prediction, public cells, and
+overlapping fragment messages remain behind their evidence gates.
 
 ### Phase 3D: Refactor only the retained design
 
