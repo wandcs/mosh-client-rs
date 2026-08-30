@@ -275,6 +275,27 @@ fails.
 - [x] Prove through the public Session contract that a confirmed `Always` epoch
   survives complete UDP loss while `Never` stays authoritative-only.
 
+### Phase 4 code-organization maintenance
+
+Repeated consumer-driven additions have made two existing file boundaries
+harder to review. This user-authorized maintenance may move private code and
+tests, but it must not change protocol behavior, the public API, production
+ownership, or the one-crate design.
+
+- [x] Split the Session stock recovery tests by prediction, recovery, and
+  isolation scenario. Give the Session-specific UDP relay one test-only owner;
+  do not introduce a generic transport or universal stock fixture.
+- [x] Separate the public Session facade from its private driver runtime while
+  preserving the single Session owner, event priority, shutdown order, and
+  existing module API.
+- [x] Run focused checks after each move, then run formatting, Clippy, and all
+  tests in the default WSL distribution before closing this maintenance batch.
+
+This maintenance batch is complete as of 2026-08-31. The moved stock recovery
+fixture and six Session state-machine tests passed. The final formatting,
+Clippy, and all-target test gates also passed without a production behavior or
+public API change.
+
 - [x] Keep LeanTTY responsible for Host resolution, host verification,
   authentication, and controlled server startup.
 - [ ] Connect one Pane-owned Mosh Session to one Terminal Surface without a

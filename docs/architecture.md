@@ -415,9 +415,11 @@ src/
     mod.rs               terminal ownership boundary
     state.rs             authoritative screen and modes
     paint.rs             deterministic bounded VT output
-  session.rs             production driver, commands, events and cleanup
+  session.rs             public Session facade, lifecycle, errors and task handle
   session/
+    driver.rs            single-owner socket, protocol, timing and cleanup runtime
     client_history.rs    bounded client operations and SSP checkpoints
+    reachability.rs      latest-value interruption and recovery observations
   test_support.rs        Linux-only shared stock fixture process support
 
 tests/

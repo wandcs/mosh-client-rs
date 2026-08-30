@@ -2,14 +2,23 @@ use super::super::*;
 
 use std::net::Ipv4Addr;
 use std::process::{Command, Stdio};
+use std::time::Duration;
+
+use tokio::sync::{mpsc, watch};
 use tokio::task::JoinHandle;
 
 use zeroize::Zeroize as _;
 
+use crate::Bootstrap;
+use crate::prediction::PredictionMode;
 use crate::test_support::{DetachedProcessGuard, assert_stock_1_4_0, find_detached_pid};
 
-#[path = "stock/recovery.rs"]
+mod isolation;
+mod prediction;
 mod recovery;
+mod relay;
+
+use relay::UdpRelay;
 
 #[test]
 #[ignore = "requires a locally installed stock mosh-server 1.4.0"]
