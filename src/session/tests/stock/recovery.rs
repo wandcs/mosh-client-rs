@@ -221,20 +221,118 @@ fn stock_1_4_0_private_session_recovers_after_outage_and_source_port_change() {
 
 #[test]
 #[ignore = "requires a locally installed stock mosh-server 1.4.0"]
-fn stock_1_4_0_private_session_remains_controllable_after_server_disappears() {
+fn stock_1_4_0_public_reachability_reports_outage_reply_loss_and_recovery() {
+    assert_stock_1_4_0("mosh-server");
+    let (bootstrap, mut server) = start_stock_server("60700:60719");
+    let server_addr = bootstrap.server_addr();
+
+    stock_runtime().block_on(async {
+        let relay = UdpRelay::start(server_addr).await;
+        let bootstrap = bootstrap.with_test_server_addr(relay.endpoint());
+        let (mut session, session_task) = Session::connect(bootstrap, 80, 24)
+            .await
+            .expect("public Session setup failed");
+        let mut reachability = session.subscribe_reachability();
+        let task = tokio::spawn(session_task.run());
+        let mut projection = vt100::Parser::new(24, 80, 0);
+
+        wait_for_public_screen(&mut session, &mut projection, "MOSH_SESSION> ").await;
+        wait_for_reachability(&mut reachability, SessionReachability::Responsive).await;
+
+        let replayed_datagram = relay.last_server_datagram();
+        relay.pause();
+        for _ in 0..6 {
+            tokio::time::sleep(Duration::from_secs(1)).await;
+            relay.inject_to_client(&replayed_datagram).await;
+        }
+        wait_for_reachability(
+            &mut reachability,
+            SessionReachability::Interrupted {
+                reason: SessionInterruption::NoRecentContact,
+            },
+        )
+        .await;
+        assert!(!task.is_finished(), "outage ended an active Session");
+
+        relay.resume();
+        wait_for_reachability(&mut reachability, SessionReachability::Responsive).await;
+        session
+            .send_input(b"printf 'REACHABILITY_RECOVERED\n'\n".to_vec())
+            .await
+            .expect("Session rejected input after recovery");
+        wait_for_public_screen(&mut session, &mut projection, "REACHABILITY_RECOVERED").await;
+
+        session
+            .send_input(
+                b"(i=0; while [ \"$i\" -lt 20 ]; do printf 'CONTACT_TICK_%s\\n' \"$i\"; i=$((i+1)); sleep 1; done) &\n"
+                    .to_vec(),
+            )
+            .await
+            .expect("Session rejected remote contact generator");
+        wait_for_public_screen(&mut session, &mut projection, "CONTACT_TICK_0").await;
+        relay.pause_client_to_server();
+        wait_for_reachability(
+            &mut reachability,
+            SessionReachability::Interrupted {
+                reason: SessionInterruption::NoRecentReply,
+            },
+        )
+        .await;
+        assert!(!task.is_finished(), "reply loss ended an active Session");
+
+        relay.resume();
+        wait_for_reachability(&mut reachability, SessionReachability::Responsive).await;
+        session.cancel();
+        assert_eq!(
+            tokio::time::timeout(Duration::from_secs(2), task)
+                .await
+                .expect("cancelled Session did not stop")
+                .expect("Session task panicked")
+                .expect("Session task failed"),
+            SessionExit::Cancelled
+        );
+    });
+
+    assert!(server.terminate(), "stock server fixture did not clean up");
+}
+
+async fn wait_for_reachability(
+    reachability: &mut SessionReachabilityWatch,
+    expected: SessionReachability,
+) {
+    tokio::time::timeout(Duration::from_secs(12), async {
+        loop {
+            if reachability.current() == expected {
+                return;
+            }
+            reachability
+                .changed()
+                .await
+                .expect("reachability observer closed before expected state");
+        }
+    })
+    .await
+    .unwrap_or_else(|_| panic!("timed out waiting for reachability {expected:?}"));
+}
+
+#[test]
+#[ignore = "requires a locally installed stock mosh-server 1.4.0"]
+fn stock_1_4_0_public_session_reports_interruption_after_server_disappears() {
     assert_stock_1_4_0("mosh-server");
     let (bootstrap, mut server) = start_stock_server("60480:60499");
 
     let runtime = stock_runtime();
     runtime.block_on(async {
-        let (commands, mut output, task) = start_private_session(bootstrap).await;
+        let (mut session, session_task) = Session::connect(bootstrap, 80, 24)
+            .await
+            .expect("public Session setup failed");
+        let mut reachability = session.subscribe_reachability();
+        let task = tokio::spawn(session_task.run());
         let mut projection = vt100::Parser::new(24, 80, 0);
 
-        wait_for_screen(&mut output, &mut projection, "MOSH_SESSION> ").await;
-        assert!(
-            server.signal_terminate(),
-            "failed to terminate stock server"
-        );
+        wait_for_public_screen(&mut session, &mut projection, "MOSH_SESSION> ").await;
+        wait_for_reachability(&mut reachability, SessionReachability::Responsive).await;
+        assert!(server.signal_kill(), "failed to kill stock server");
         tokio::time::timeout(Duration::from_secs(2), async {
             while !server.has_exited() {
                 tokio::time::sleep(Duration::from_millis(20)).await;
@@ -242,26 +340,40 @@ fn stock_1_4_0_private_session_remains_controllable_after_server_disappears() {
         })
         .await
         .expect("stock server did not exit after termination signal");
-        tokio::time::sleep(Duration::from_millis(3_500)).await;
+        wait_for_reachability(
+            &mut reachability,
+            SessionReachability::Interrupted {
+                reason: SessionInterruption::NoRecentContact,
+            },
+        )
+        .await;
         assert!(
             !task.is_finished(),
             "Session stopped solely because the server became silent"
         );
+        assert_eq!(session.state(), SessionState::Active);
 
-        commands
-            .send(SessionCommand::Repaint)
+        session
+            .request_repaint()
             .await
             .expect("Session command queue closed after server disappearance");
         let mut replacement = vt100::Parser::new(24, 80, 0);
-        wait_for_screen_with_timeout(
-            &mut output,
-            &mut replacement,
-            "MOSH_SESSION> ",
-            Duration::from_secs(2),
-        )
-        .await;
+        let repaint = tokio::time::timeout(Duration::from_secs(2), session.next_output())
+            .await
+            .expect("repaint timed out after server disappearance")
+            .expect("output closed after server disappearance");
+        replacement.process(&repaint);
+        assert!(replacement.screen().contents().contains("MOSH_SESSION> "));
 
-        cancel_session(&commands, task).await;
+        session.cancel();
+        assert_eq!(
+            tokio::time::timeout(Duration::from_secs(2), task)
+                .await
+                .expect("cancelled Session did not stop")
+                .expect("Session task panicked")
+                .expect("Session task failed"),
+            SessionExit::Cancelled
+        );
     });
 
     assert!(server.terminate(), "stock server fixture did not clean up");
@@ -497,7 +609,8 @@ struct RelayTraffic {
 struct RelayControl {
     client_addr: Arc<Mutex<Option<SocketAddr>>>,
     last_server_datagram: Arc<Mutex<Option<Vec<u8>>>>,
-    dropping: Arc<AtomicBool>,
+    drop_client_to_server: Arc<AtomicBool>,
+    drop_server_to_client: Arc<AtomicBool>,
     active_source: Arc<AtomicUsize>,
     dropped: Arc<AtomicUsize>,
     one_way_delay: Duration,
@@ -508,7 +621,8 @@ struct UdpRelay {
     downstream: Arc<UdpSocket>,
     client_addr: Arc<Mutex<Option<SocketAddr>>>,
     last_server_datagram: Arc<Mutex<Option<Vec<u8>>>>,
-    dropping: Arc<AtomicBool>,
+    drop_client_to_server: Arc<AtomicBool>,
+    drop_server_to_client: Arc<AtomicBool>,
     active_source: Arc<AtomicUsize>,
     dropped: Arc<AtomicUsize>,
     sent: [Arc<AtomicUsize>; 2],
@@ -556,7 +670,8 @@ impl UdpRelay {
             "relay sources unexpectedly share a UDP port"
         );
 
-        let dropping = Arc::new(AtomicBool::new(false));
+        let drop_client_to_server = Arc::new(AtomicBool::new(false));
+        let drop_server_to_client = Arc::new(AtomicBool::new(false));
         let active_source = Arc::new(AtomicUsize::new(0));
         let dropped = Arc::new(AtomicUsize::new(0));
         let sent = [Arc::new(AtomicUsize::new(0)), Arc::new(AtomicUsize::new(0))];
@@ -566,7 +681,8 @@ impl UdpRelay {
         let control = RelayControl {
             client_addr: Arc::clone(&client_addr),
             last_server_datagram: Arc::clone(&last_server_datagram),
-            dropping: Arc::clone(&dropping),
+            drop_client_to_server: Arc::clone(&drop_client_to_server),
+            drop_server_to_client: Arc::clone(&drop_server_to_client),
             active_source: Arc::clone(&active_source),
             dropped: Arc::clone(&dropped),
             one_way_delay,
@@ -593,7 +709,8 @@ impl UdpRelay {
             downstream,
             client_addr,
             last_server_datagram,
-            dropping,
+            drop_client_to_server,
+            drop_server_to_client,
             active_source,
             dropped,
             sent,
@@ -607,11 +724,18 @@ impl UdpRelay {
     }
 
     fn pause(&self) {
-        self.dropping.store(true, Ordering::SeqCst);
+        self.drop_client_to_server.store(true, Ordering::SeqCst);
+        self.drop_server_to_client.store(true, Ordering::SeqCst);
+    }
+
+    fn pause_client_to_server(&self) {
+        self.drop_client_to_server.store(true, Ordering::SeqCst);
+        self.drop_server_to_client.store(false, Ordering::SeqCst);
     }
 
     fn resume(&self) {
-        self.dropping.store(false, Ordering::SeqCst);
+        self.drop_client_to_server.store(false, Ordering::SeqCst);
+        self.drop_server_to_client.store(false, Ordering::SeqCst);
     }
 
     fn switch_source_port(&self) {
@@ -693,7 +817,7 @@ async fn forward_client_datagrams(
                 continue;
             }
         }
-        if control.dropping.load(Ordering::SeqCst) {
+        if control.drop_client_to_server.load(Ordering::SeqCst) {
             control.dropped.fetch_add(1, Ordering::SeqCst);
             continue;
         }
@@ -714,7 +838,7 @@ async fn forward_server_datagrams(
 ) {
     let mut datagram = [0_u8; MAX_DATAGRAM_BYTES];
     while let Ok(length) = upstream.recv(&mut datagram).await {
-        if control.dropping.load(Ordering::SeqCst) {
+        if control.drop_server_to_client.load(Ordering::SeqCst) {
             control.dropped.fetch_add(1, Ordering::SeqCst);
             continue;
         }

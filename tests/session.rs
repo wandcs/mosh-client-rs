@@ -2,7 +2,8 @@ use std::net::Ipv4Addr;
 use std::time::Duration;
 
 use mosh_client::{
-    Bootstrap, Session, SessionCommandError, SessionError, SessionExit, SessionState,
+    Bootstrap, Session, SessionCommandError, SessionError, SessionExit, SessionReachability,
+    SessionState,
 };
 
 fn runtime() -> tokio::runtime::Runtime {
@@ -73,6 +74,24 @@ fn public_cancellation_is_idempotent_and_closes_lifecycle_and_output() {
         assert_eq!(session.state_changed().await, SessionState::Closed);
         assert_eq!(session.state(), SessionState::Closed);
         assert_eq!(session.next_output().await, None);
+    });
+}
+
+#[test]
+fn public_reachability_observer_is_independent_from_output_and_lifecycle() {
+    runtime().block_on(async {
+        let (mut session, task) = Session::connect(bootstrap(), 80, 24).await.unwrap();
+        let mut reachability = session.subscribe_reachability();
+
+        assert_eq!(session.reachability(), SessionReachability::AwaitingPeer);
+        assert_eq!(reachability.current(), SessionReachability::AwaitingPeer);
+
+        let task = tokio::spawn(task.run());
+        session.cancel();
+        assert_eq!(task.await.unwrap().unwrap(), SessionExit::Cancelled);
+        assert_eq!(session.state_changed().await, SessionState::Closed);
+        assert_eq!(session.next_output().await, None);
+        assert_eq!(reachability.changed().await, None);
     });
 }
 

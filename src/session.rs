@@ -1,4 +1,7 @@
 mod client_history;
+mod reachability;
+
+pub use self::reachability::{SessionInterruption, SessionReachability, SessionReachabilityWatch};
 
 use core::future::Future as _;
 use core::task::{Poll, ready};
@@ -26,13 +29,16 @@ use crate::limits::{
 };
 use crate::packet::{Direction, PacketCodec, PacketError, PacketReceiver, SendSequence};
 use crate::prediction::LocalPrediction;
-use crate::synchronization::{RemoteStateDisposition, SynchronizationError, SynchronizationState};
+use crate::synchronization::{
+    AcknowledgementDisposition, RemoteStateDisposition, SynchronizationError, SynchronizationState,
+};
 use crate::terminal::{
     PaintError, TerminalDifference, TerminalError, TerminalPainter, TerminalState, is_valid_size,
 };
 use crate::timing::{DatagramTiming, SchedulerPoll, SendScheduler, TimingError, WakePlan};
 
 use self::client_history::ClientHistory;
+use self::reachability::{ReachabilityError, ReachabilityTracker};
 
 const INITIAL_CHAFF: &[u8] = &[0];
 
@@ -70,6 +76,8 @@ pub enum SessionError {
     Io(ErrorKind),
     /// The requested initial terminal size is outside the documented limits.
     InvalidTerminalSize,
+    /// No complete authenticated remote state arrived before the attachment deadline.
+    ConnectionTimeout,
     /// Authenticated input violated the supported protocol or terminal contract.
     Protocol,
     /// A bounded protocol or output resource limit was reached.
@@ -85,6 +93,7 @@ impl fmt::Display for SessionError {
         match self {
             Self::Io(kind) => write!(formatter, "Session I/O failed: {kind:?}"),
             Self::InvalidTerminalSize => formatter.write_str("invalid terminal size"),
+            Self::ConnectionTimeout => formatter.write_str("Session attachment timed out"),
             Self::Protocol => formatter.write_str("remote protocol state is invalid"),
             Self::ResourceLimit => formatter.write_str("Session resource limit reached"),
             Self::StateExhausted => formatter.write_str("Session state space exhausted"),
@@ -129,6 +138,7 @@ pub struct Session {
     graceful_close: watch::Sender<bool>,
     close_requested: Mutex<bool>,
     state: watch::Receiver<SessionState>,
+    reachability: watch::Receiver<SessionReachability>,
 }
 
 impl Session {
@@ -153,6 +163,7 @@ impl Session {
             cancellation,
             graceful_close,
             state,
+            reachability,
         } = channels;
         Ok((
             Self {
@@ -162,6 +173,7 @@ impl Session {
                 graceful_close,
                 close_requested: Mutex::new(false),
                 state,
+                reachability,
             },
             SessionTask { driver },
         ))
@@ -247,6 +259,18 @@ impl Session {
         }
     }
 
+    /// Returns the latest reachability observation without waiting.
+    #[must_use]
+    pub fn reachability(&self) -> SessionReachability {
+        *self.reachability.borrow()
+    }
+
+    /// Creates an independently owned latest-value reachability observer.
+    #[must_use]
+    pub fn subscribe_reachability(&self) -> SessionReachabilityWatch {
+        SessionReachabilityWatch::new(self.reachability.clone())
+    }
+
     /// Receives the next bounded, ordered VT output chunk.
     pub async fn next_output(&mut self) -> Option<Vec<u8>> {
         self.output.recv().await
@@ -281,9 +305,9 @@ impl SessionTask {
     ///
     /// # Errors
     ///
-    /// Returns a stable [`SessionError`] category for local I/O failure,
-    /// invalid authenticated protocol state, resource exhaustion, or an
-    /// internal invariant failure.
+    /// Returns [`SessionError::ConnectionTimeout`] when no complete
+    /// authenticated remote state arrives within the attachment deadline, or
+    /// another stable category for I/O, protocol, resource, or state failure.
     pub async fn run(self) -> Result<SessionExit, SessionError> {
         let state = self.driver.state_tx.clone();
         let result = self.driver.run().await;
@@ -308,6 +332,7 @@ pub(crate) enum DriverError {
     Instruction(InstructionError),
     Synchronization(SynchronizationError),
     Timing(TimingError),
+    Reachability(ReachabilityError),
     Terminal(TerminalError),
     Paint(PaintError),
     MissingClientState,
@@ -315,6 +340,7 @@ pub(crate) enum DriverError {
     OperationIndexExhausted,
     FragmentIdentifierExhausted,
     ClockExhausted,
+    ConnectionTimeout,
     IncompleteDatagramSend,
 }
 
@@ -334,6 +360,7 @@ from_error!(ReassemblyError, Reassembly);
 from_error!(InstructionError, Instruction);
 from_error!(SynchronizationError, Synchronization);
 from_error!(TimingError, Timing);
+from_error!(ReachabilityError, Reachability);
 from_error!(TerminalError, Terminal);
 from_error!(PaintError, Paint);
 
@@ -347,6 +374,7 @@ impl From<DriverError> for SessionError {
     fn from(error: DriverError) -> Self {
         match error {
             DriverError::Io(kind) => Self::Io(kind),
+            DriverError::ConnectionTimeout => Self::ConnectionTimeout,
             DriverError::Terminal(TerminalError::InvalidTerminalSize) => Self::InvalidTerminalSize,
             DriverError::Instruction(
                 InstructionError::DecodedTooLarge
@@ -367,6 +395,9 @@ impl From<DriverError> for SessionError {
             DriverError::OperationIndexExhausted
             | DriverError::FragmentIdentifierExhausted
             | DriverError::ClockExhausted
+            | DriverError::Reachability(
+                ReachabilityError::TimeMovedBackwards | ReachabilityError::TimerExhausted,
+            )
             | DriverError::Packet(PacketError::SequenceExhausted)
             | DriverError::Reassembly(ReassemblyError::TimerExhausted)
             | DriverError::Synchronization(
@@ -393,6 +424,7 @@ pub(crate) struct SessionChannels {
     pub(crate) cancellation: watch::Sender<bool>,
     pub(crate) graceful_close: watch::Sender<bool>,
     pub(crate) state: watch::Receiver<SessionState>,
+    pub(crate) reachability: watch::Receiver<SessionReachability>,
 }
 
 pub(crate) struct SessionDriver {
@@ -418,6 +450,8 @@ pub(crate) struct SessionDriver {
     cancellation_rx: watch::Receiver<bool>,
     graceful_close_rx: watch::Receiver<bool>,
     state_tx: watch::Sender<SessionState>,
+    reachability: ReachabilityTracker,
+    reachability_tx: watch::Sender<SessionReachability>,
     final_terminal: Option<TerminalState>,
 }
 
@@ -449,6 +483,8 @@ impl SessionDriver {
         let (cancellation_tx, cancellation_rx) = watch::channel(false);
         let (graceful_close_tx, graceful_close_rx) = watch::channel(false);
         let (state_tx, state_rx) = watch::channel(SessionState::Connecting);
+        let reachability = ReachabilityTracker::new();
+        let (reachability_tx, reachability_rx) = watch::channel(reachability.current());
 
         Ok((
             Self {
@@ -474,6 +510,8 @@ impl SessionDriver {
                 cancellation_rx,
                 graceful_close_rx,
                 state_tx,
+                reachability,
+                reachability_tx,
                 final_terminal: None,
             },
             SessionChannels {
@@ -482,6 +520,7 @@ impl SessionDriver {
                 cancellation: cancellation_tx,
                 graceful_close: graceful_close_tx,
                 state: state_rx,
+                reachability: reachability_rx,
             },
         ))
     }
@@ -494,6 +533,10 @@ impl SessionDriver {
                 return Ok(SessionExit::Cancelled);
             }
             let now_ms = self.now_ms()?;
+            self.publish_reachability(now_ms)?;
+            if self.reachability.attachment_timed_out(now_ms) {
+                return Err(DriverError::ConnectionTimeout);
+            }
             self.reassembler.expire(now_ms)?;
             if self.prediction.expire(now_ms) {
                 self.output_requested = true;
@@ -514,6 +557,10 @@ impl SessionDriver {
                         .prediction
                         .next_deadline_ms()
                         .map_or(wake_at_ms, |prediction| wake_at_ms.min(prediction));
+                    let wake_at_ms = self
+                        .reachability
+                        .next_deadline_ms()?
+                        .map_or(wake_at_ms, |reachability| wake_at_ms.min(reachability));
                     let wake_at = self
                         .started_at
                         .checked_add(Duration::from_millis(wake_at_ms))
@@ -768,7 +815,17 @@ impl SessionDriver {
         instruction: &TransportInstruction,
     ) -> Result<(), DriverError> {
         let now_ms = self.now_ms()?;
+        let acknowledged_sent_at_ms = self
+            .synchronization
+            .sent_state_sent_at_ms(instruction.acknowledged_state);
         let transition = self.synchronization.begin_receive(instruction)?;
+        if matches!(
+            transition.acknowledgement,
+            AcknowledgementDisposition::Advanced { .. }
+        ) && let Some(sent_at_ms) = acknowledged_sent_at_ms
+        {
+            self.reachability.note_reply(sent_at_ms);
+        }
         self.client_history
             .acknowledge(self.synchronization.known_receiver_state())?;
         self.scheduler.note_acknowledgement_needed(now_ms)?;
@@ -789,6 +846,7 @@ impl SessionDriver {
                 commit.capacity_evicted_state,
             );
             if target_state == self.synchronization.remote_latest() {
+                self.reachability.note_contact(now_ms);
                 let authoritative = self
                     .terminal_states
                     .get(&target_state)
@@ -800,6 +858,14 @@ impl SessionDriver {
                 }
                 self.output_requested = true;
             }
+        }
+        self.publish_reachability(now_ms)?;
+        Ok(())
+    }
+
+    fn publish_reachability(&mut self, now_ms: u64) -> Result<(), DriverError> {
+        if let Some(reachability) = self.reachability.update(now_ms)? {
+            self.reachability_tx.send_replace(reachability);
         }
         Ok(())
     }

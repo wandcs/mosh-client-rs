@@ -65,8 +65,9 @@ cancellable. A Session fixture verifies remote PTY resize from 80×24
 to 100×30 and 60×20, followed by a replacement-surface repaint. Stock 1.4.0
 black-box fixtures also cover the reserved close target in both
 directions, the peer acknowledgement shape, and the bounded no-ACK wait.
-Physical address change, long-outage behavior, and scrollback characterization
-remain open.
+Public reachability now reports recent-contact and recent-reply warnings without
+treating silence as close. Physical address change, longer recovery behavior,
+and scrollback characterization remain open.
 
 The full evidence matrix, offline-first policy, runtime isolation cases, VT
 output contract, and physical LeanTTY acceptance are defined in
@@ -75,7 +76,7 @@ output contract, and physical LeanTTY acceptance are defined in
 ## Deferred compatibility
 
 IPv6, configurable port ranges, prediction modes, locale negotiation, broad
-terminal application coverage, recoverable local UDP send errors, reachability
-events, and non-LeanTTY consumers require separate evidence. ProxyJump applies
+terminal application coverage, recoverable local UDP send errors, configurable
+reachability thresholds, and non-LeanTTY consumers require separate evidence. ProxyJump applies
 only to an embedding application's SSH bootstrap; it does not imply UDP
 reachability.

@@ -7,7 +7,8 @@ An independent, unofficial, wire-compatible Mosh client implementation in Rust.
 Phase 1's bounded authenticated UDP core and Phase 2 are complete. Phase 3 now
 exports the first small Session API with explicit lifecycle state, distinct
 graceful close and prompt cancellation, bounded commands, and ordered VT
-output. Phase 2
+output. A separate latest-value reachability contract reports missing recent
+contact or reply without treating network silence as close. Phase 2
 includes SSP synchronization, timing and recovery scheduling, bounded fragment
 reassembly, authoritative terminal state, VT painting, and a Session
 driver with bounded confirmed-epoch ASCII prediction. A local stock
@@ -44,11 +45,14 @@ metadata. See [the roadmap](docs/roadmap.md), the
 `Session::connect` returns a caller-owned `Session` handle and a `SessionTask`.
 The caller runs the task on its own Tokio executor, sends input or resize
 commands through the handle, consumes ordered VT chunks, and explicitly closes,
-cancels, or drops the Session. See
+cancels, or drops the Session. Reachability remains independent from lifecycle
+and output backpressure. See
 [ADR 0007](docs/decisions/0007-public-session-api.md) for lifecycle and
 backpressure semantics and
 [ADR 0008](docs/decisions/0008-authenticated-graceful-close.md) for the
-authenticated close exchange.
+authenticated close exchange, and
+[ADR 0009](docs/decisions/0009-session-reachability.md) for reachability and
+initial attachment timeout.
 
 ## Goal
 

@@ -1,6 +1,7 @@
 use super::super::*;
 
 use crate::crypto::SessionKey;
+use crate::limits::INITIAL_ATTACHMENT_TIMEOUT_MS;
 use crate::test_support::STOCK_1_4_0_KEY_BYTES;
 
 #[test]
@@ -22,6 +23,7 @@ fn cancellation_closes_the_private_driver_without_a_server() {
             cancellation,
             graceful_close: _graceful_close,
             state: _state,
+            reachability: _reachability,
         } = channels;
         let task = tokio::spawn(driver.run());
 
@@ -59,6 +61,7 @@ fn cancellation_preempts_a_blocked_output_reservation() {
             cancellation,
             graceful_close: _graceful_close,
             state: _state,
+            reachability: _reachability,
         } = channels;
         let task = tokio::spawn(driver.run());
 
@@ -96,6 +99,7 @@ fn cancellation_preempts_a_blocked_final_output_drain() {
             cancellation,
             graceful_close: _graceful_close,
             state: _state,
+            reachability: _reachability,
         } = channels;
         let task = tokio::spawn(async move {
             driver
@@ -113,6 +117,31 @@ fn cancellation_preempts_a_blocked_final_output_drain() {
             .unwrap();
 
         assert_eq!(close, SessionExit::Cancelled);
+    });
+}
+
+#[test]
+fn initial_attachment_timeout_is_reported_before_any_peer_state() {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    runtime.block_on(async {
+        let bootstrap = Bootstrap::parse(
+            Ipv4Addr::LOCALHOST,
+            b"MOSH CONNECT 65000 4NeCCgvZFe2RnPgrcU1PQw",
+        )
+        .unwrap();
+        let (mut driver, channels) = SessionDriver::connect(bootstrap, 80, 24).await.unwrap();
+        driver.started_at = Instant::now() - Duration::from_millis(INITIAL_ATTACHMENT_TIMEOUT_MS);
+        let mut state = channels.state;
+
+        assert_eq!(
+            Box::pin(SessionTask { driver }.run()).await,
+            Err(SessionError::ConnectionTimeout)
+        );
+        assert!(state.changed().await.is_ok());
+        assert_eq!(*state.borrow_and_update(), SessionState::Closed);
     });
 }
 

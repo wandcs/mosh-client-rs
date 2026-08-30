@@ -238,6 +238,17 @@ public lifecycle states.
   weakening cancellation, owner drop, bounds, output drain, or Session
   isolation.
 
+LeanTTY physical testing then reproduced a recoverable bidirectional outage and
+an indistinguishable silent server termination. [ADR 0009](decisions/0009-session-reachability.md)
+admits one bounded library follow-up:
+
+- [x] Add an independent latest-value reachability contract with recent-contact
+  and recent-reply reasons, without changing monotonic lifecycle state.
+- [x] Add a 15-second first-attachment timeout that never applies to an active
+  Session.
+- [x] Prove thresholds, invalid-traffic isolation, recovery, server silence,
+  output independence, and stock-server interoperability.
+
 - [x] Keep LeanTTY responsible for Host resolution, host verification,
   authentication, and controlled server startup.
 - [ ] Connect one Pane-owned Mosh Session to one Terminal Surface without a

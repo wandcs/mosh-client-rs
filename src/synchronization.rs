@@ -162,6 +162,13 @@ impl SynchronizationState {
         self.sent_states.back().map(|state| state.sent_at_ms)
     }
 
+    pub(crate) fn sent_state_sent_at_ms(&self, number: u64) -> Option<u64> {
+        self.sent_states
+            .iter()
+            .find(|state| state.number == number)
+            .map(|state| state.sent_at_ms)
+    }
+
     #[cfg(fuzzing)]
     pub(crate) fn fuzz_retained_counts(&self) -> (usize, usize) {
         (self.sent_states.len(), self.received_states.len())

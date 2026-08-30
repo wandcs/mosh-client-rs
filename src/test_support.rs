@@ -58,10 +58,10 @@ impl DetachedProcessGuard {
         }
     }
 
-    pub(crate) fn signal_terminate(&self) -> bool {
+    pub(crate) fn signal_kill(&self) -> bool {
         self.has_exited()
             || Command::new("kill")
-                .arg("-TERM")
+                .arg("-KILL")
                 .arg(self.pid.to_string())
                 .stdout(Stdio::null())
                 .stderr(Stdio::null())

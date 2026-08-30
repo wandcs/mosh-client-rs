@@ -18,7 +18,8 @@ event queue would let slow painting delay cancellation and close observation.
 ## Decision
 
 The crate exports `Session`, `SessionTask`, `SessionState`, `SessionExit`,
-`SessionError`, and `SessionCommandError`.
+`SessionError`, and `SessionCommandError`. ADR 0009 later adds an independent
+latest-value reachability observer without changing this lifecycle state.
 
 `Session::connect` consumes a validated `Bootstrap` and returns a `Session`
 handle plus a `SessionTask`. The caller must poll `SessionTask::run` on its own

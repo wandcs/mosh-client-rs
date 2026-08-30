@@ -53,13 +53,14 @@ cancellation fail explicitly without partially mutating the fixture.
 | Client operations retained after acknowledgement | 4,096 | Reject input or resize before mutation |
 | Pending Session commands | 64 | Apply bounded sender backpressure |
 | Pending output chunks | 1 initially | Apply backpressure to painting while protocol state continues |
+| Pending reachability values | One latest value | Coalesce observations; never queue history |
 | One output chunk | 2 MiB | Fail explicitly and request a bounded full repaint |
 
 The public API preserves the Phase 2 command and output limits. Input, resize,
-and repaint use the bounded command queue. Lifecycle state uses a separate
-latest-value channel because intermediate lifecycle observations carry no
-payload. Cancellation uses a dedicated idempotent signal, so it cannot wait
-behind a full command or output queue. Graceful close uses a separate
+and repaint use the bounded command queue. Lifecycle and reachability each use
+a separate latest-value channel. Reachability observers do not share VT output
+backpressure. Cancellation uses a dedicated idempotent signal, so it cannot
+wait behind a full command or output queue. Graceful close uses a separate
 idempotent lifecycle signal: commands accepted before it remain ordered, while
 later commands fail explicitly. Commands and output are never silently dropped.
 
@@ -105,15 +106,18 @@ stale display state; it does not classify an echo as correct or incorrect.
 | Delayed acknowledgement | At most 100 ms | Published Mosh design |
 | Frame interval | 20–250 ms | Published Mosh design |
 | Idle heartbeat | 3 s | Published Mosh design |
+| No recent server contact | 6.5 s | ADR 0009 public reachability policy |
+| No recent peer reply | 10 s | ADR 0009 public reachability policy |
+| Initial attachment timeout | 15 s | ADR 0009 stock-compatible lifecycle policy |
 | Incomplete-fragment expiry | 10 s | Local memory bound |
 | Graceful-close acknowledgement window | 4 s | Stock 1.4.0 black-box observation |
 
 Use monotonic time. A long suspension advances timers once, coalesces expired
 work, and never replays every missed tick. The four-second close window begins
 only after an explicit local close request; expiry reports local completion but
-does not prove peer receipt. Ordinary network silence does not close the
-Session or change its lifecycle state; a later reachability signal needs its
-own evidence and decision.
+does not prove peer receipt. The 15-second attachment timeout applies only
+before the first accepted remote state. Ordinary silence in an active Session
+may change reachability but never closes the Session or changes lifecycle.
 An outgoing timestamp reply is omitted after one second, when no peer timestamp
 exists, or when the adjusted value would collide with the wire's `0xffff`
 no-reply marker.

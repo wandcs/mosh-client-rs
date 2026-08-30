@@ -460,3 +460,31 @@ Author:
   local bounded wait. They do not make silence a close signal, prove peer
   receipt after timeout, classify local UDP errors, or add public reachability
   state.
+
+### Public reachability and silent-peer boundary
+
+- Date: 2026-08-30
+- Behavior: established Mosh Sessions survive intermittent connectivity and
+  warn when recent server contact or acknowledgement progress is absent.
+  Silence does not authenticate a close or prove that a server process ended.
+- Evidence class: published protocol design, project-controlled stock-server
+  behavior, and physical consumer experiment.
+- Source: [Mosh final paper](https://mosh.org/mosh-paper.pdf), the public
+  [Mosh technical overview](https://mosh.org/),
+  [stock Session recovery fixture](fixtures/stock-1.4.0-session-recovery.md),
+  and [LeanTTY physical reachability evidence](fixtures/leantty-physical-reachability.md).
+- Observed versions: published SSP design, unmodified stock `mosh-server`
+  1.4.0 on Ubuntu 26.04 WSL, and one physical ARM64 HarmonyOS LeanTTY slice.
+- Implementation consequence: retain monotonic lifecycle; publish a separate
+  latest-value warning after 6.5 seconds without a new accepted latest remote
+  state or 10 seconds without acknowledgement progress; recover to responsive
+  on fresh authenticated progress; and never complete an active Session from
+  silence. Bound an unattached attempt at 15 seconds.
+- Architecture comparisons: Stock Mosh, MoshCatty, swift-mosh, Spectty,
+  `ssp-transport`, `dart_mosh`, `mosh-go`, and `mosh-dart` informed the public
+  state-shape comparison only. No source, test, wire rule, or file structure
+  was copied or translated.
+- Limits: 6.5 seconds, 10 seconds, and 15 seconds are fixed initial public
+  policy, not claims that every compatible implementation must use them.
+  Reachability does not prove delivery of the newest input, future packet
+  delivery, platform network availability, or server-process existence.

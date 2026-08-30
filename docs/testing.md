@@ -279,6 +279,16 @@ bound, invalid command rejection before queueing, output closure, and
 `RemoteClosed`, `Cancelled`, and two-Session lifecycle isolation against stock
 1.4.0.
 
+The reachability suite separately proves `AwaitingPeer`, `Responsive`, both
+interruption reasons, recovery, invalid-traffic isolation, output independence,
+and the 15-second first-attachment timeout. Boundary tests use explicit
+monotonic milliseconds. A stock-server relay drops both directions long enough
+to produce `NoRecentContact`, then restores the same Session. An uplink-only
+case keeps authenticated server states flowing while client acknowledgements
+age into `NoRecentReply`. Replayed authenticated traffic during an outage does
+not refresh contact. A stock server killed without a close exchange produces an
+interruption but no close result.
+
 The Phase 3A isolation fixture starts two public Sessions through distinct
 loopback relays. It injects Session A ciphertext from Session B's expected relay
 endpoint, interleaves unique input, uses different PTY sizes, and rebuilds both

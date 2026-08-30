@@ -10,8 +10,9 @@
 > [0004](decisions/0004-rustcrypto-ocb3-security-exception.md),
 > [0005](decisions/0005-bounded-local-prediction.md),
 > [0006](decisions/0006-phase-2-core-viability-gate.md),
-> [0007](decisions/0007-public-session-api.md), and
-> [0008](decisions/0008-authenticated-graceful-close.md)
+> [0007](decisions/0007-public-session-api.md),
+> [0008](decisions/0008-authenticated-graceful-close.md), and
+> [0009](decisions/0009-session-reachability.md)
 
 The [Phase 3 mechanism necessity review](necessity-review.md) records which
 implemented mechanisms the stabilized library keeps and which behavior remains
@@ -47,7 +48,7 @@ Embedding application
   ├─ terminal surface
   └─ one application Session owner
        │ commands: input, resize, repaint, close, cancel
-       │ events: state, output bytes, close
+       │ events: lifecycle, reachability, output bytes, close
        ▼
 Mosh Session driver
   ├─ UDP socket and fixed server endpoint
@@ -87,11 +88,11 @@ application runs that future on an existing executor. The initial library does
 not create a global runtime or one operating-system thread per Session.
 
 The production driver owns UDP reads and writes, timers, retransmission,
-heartbeat, client roaming continuity, and output generation. The public
-`Session` handle sends bounded commands, receives bounded VT output, observes
-lifecycle state, and requests graceful close or hard cancellation. Dropping the
-handle or cancelling the task closes the socket, stops timers, clears queues,
-and releases session secrets.
+heartbeat, client roaming continuity, reachability, and output generation. The
+public `Session` handle sends bounded commands, receives bounded VT output,
+observes lifecycle and reachability, and requests graceful close or hard
+cancellation. Dropping the handle or cancelling the task closes the socket,
+stops timers, clears queues, and releases session secrets.
 
 `Session::connect` returns the handle and a `SessionTask`. The caller polls
 `SessionTask::run` on its own Tokio executor. One future polls cancellation and
@@ -216,10 +217,11 @@ Session
   ├─ bounded ordered commands: input, resize, repaint
   ├─ bounded ordered VT output: next_output
   ├─ latest lifecycle state: Connecting, Active, Closed
+  ├─ latest reachability: AwaitingPeer, Responsive, Interrupted
   └─ prompt idempotent cancellation
 
 SessionTask::run
-  └─ Cancelled | OwnerDropped | SessionError
+  └─ LocalClosed | RemoteClosed | Cancelled | OwnerDropped | SessionError
 ```
 
 Lifecycle state is a coalescing latest value, not an event log. `Active` means
@@ -228,6 +230,19 @@ a live reachability promise. VT output remains a one-slot ordered queue with
 backpressure. There is deliberately no cross-stream revision or ordering
 contract between lifecycle state and VT chunks. `Closed` may become visible
 while one previously accepted output chunk remains available to drain.
+
+Reachability is a second coalescing latest value. Before the first accepted
+remote state it is `AwaitingPeer`. Recent authenticated remote-state and
+client-acknowledgement progress make it `Responsive`. Missing recent contact or
+reply makes it `Interrupted` without changing `Active` or completing the task.
+Invalid or incomplete traffic does not refresh it. An independent observer can
+await reachability while the Session owner consumes VT output; neither stream
+backpressures the other.
+
+The first attachment attempt fails after 15 seconds without an accepted remote
+state. Once `Active`, ordinary silence has no completion timeout. Authenticated
+close, explicit close or cancellation, owner drop, state exhaustion, and
+unrecoverable errors retain their existing meanings.
 
 The contract requires:
 
@@ -447,7 +462,6 @@ The initial design defers:
 - prediction beyond the measured single-byte printable ASCII epoch;
 - recovery from selected local UDP send errors until platform evidence defines
   which errors are temporary and how retries remain paced;
-- public reachability or disconnected state;
 - a public terminal-cell or screen-snapshot API;
 - terminal profiles beyond the first verified UTF-8 VT target;
 - complete or persistent scrollback;

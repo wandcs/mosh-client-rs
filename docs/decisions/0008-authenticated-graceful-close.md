@@ -52,8 +52,8 @@ completion. Cancellation still preempts a blocked output reservation.
   peer received the request.
 - Silence during an ordinary active Session remains recoverable and never
   becomes `RemoteClosed`.
-- Reachability state and temporary local UDP-send recovery remain deferred
-  until physical platform evidence defines them.
+- ADR 0009 adds reachability after physical platform evidence. Temporary local
+  UDP-send recovery remains deferred until platform evidence defines it.
 
 ## Rejected alternatives
 
