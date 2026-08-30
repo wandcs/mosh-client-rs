@@ -2,23 +2,27 @@
 
 > Review date: 2026-08-30
 >
-> Scope: the evidence required before LeanTTY product integration begins
+> Scope: the evidence required before LeanTTY product integration begins, and
+> the later native consumer result
 
-## Decision
+## Stage decision
 
-Phase 4 product integration is not authorized yet.
+The `mosh-client` core is frozen after Phase 3F and successful native consumer
+integration. Further library work now requires evidence from LeanTTY's physical
+Mosh Session tests or a separate release decision.
 
-The library is technically linkable with LeanTTY's current Rust native
-dependencies for ARM64 HarmonyOS. Official HarmonyOS documentation also exposes
-UDP sockets, default-network callbacks, socket-to-network binding, and
-long-running-task APIs. These facts remove two feasibility risks, but they do
-not prove that a normal third-party HarmonyOS PC application preserves and
-recovers a Mosh session across backgrounding, lock, sleep, or network changes.
+LeanTTY recorded that current SSH loses the remote working context when Wi-Fi is
+disabled, then authorized a minimal Mosh vertical slice. Its native layer now
+owns host verification, authentication, controlled bootstrap, the Mosh UDP
+task, input, resize, repaint after output suspension, and cancellation. The
+integration uses this crate's public API without adding a generic Transport
+layer or a LeanTTY-specific protocol API.
 
-LeanTTY must therefore finish its existing Mosh entry gate before product code
-is added. The remaining work is a disposable app-level UDP/lifecycle probe and
-a measured comparison with current SSH behavior. If that evidence does not
-show material user value, Phase 4 stops without adding a Mosh path.
+This is a consumer and build milestone, not Phase 4 completion. Pane and ArkTS
+ownership, the Terminal Surface event chain, the command entry, signed-HAP
+sessions, and physical recovery tests remain in LeanTTY. If those tests do not
+show material user value, LeanTTY removes the product path without expanding
+this library.
 
 ## Governing boundary
 
@@ -59,6 +63,21 @@ that process. No global configuration or project source was changed.
 This proves source-level coexistence and target linking only. The disposable
 build was not installed, launched, or exercised on a device.
 
+### Native consumer integration
+
+LeanTTY later integrated commit `69450f4` as a local path dependency. Its native
+Mosh owner performs SSH host verification and authentication, runs a controlled
+bootstrap, parses the bounded result in Rust, starts the UDP Session task, and
+owns input, resize, repaint, and cancellation. Bootstrap output stays in a
+`Zeroizing<Vec<u8>>`; the temporary key does not enter ArkTS, terminal output,
+logs, or persistent state.
+
+LeanTTY's focused `policy,rust-native` gate passed on 2026-08-30. The same tree
+passed 42 native tests, strict Clippy, and an ARM64 OHOS release build that
+actually linked `mosh-client`. The evidence was development-only and explicitly
+not release-eligible. LeanTTY had not yet connected Pane/ArkTS, its Terminal
+Surface, or a user command, and had not run a physical Mosh Session.
+
 ### HarmonyOS platform capability
 
 The official platform documentation establishes these available mechanisms:
@@ -97,45 +116,38 @@ A fresh device-control preflight passed on 2026-08-30. The connected physical PC
 is available for a focused probe, but no trustworthy named Mosh product scenario
 or product HAP exists yet.
 
-## Remaining entry gate
+## Remaining product gate
 
 LeanTTY owns and must record the following evidence before this repository marks
-any Phase 4 integration item complete:
+Phase 4 complete:
 
-1. Measure current SSH behavior on the same physical PC for normal use, brief
-   interruption, Wi-Fi or address change, lock, sleep, recovery, cancellation,
-   and Pane close. Record visible correctness and recovery, not only timing.
-2. If current tools cannot answer the platform question, build one disposable
-   signed HAP probe that uses the same native/runtime boundary intended for the
-   product. Verify UDP receive/send, default-network change, lock/background,
-   sleep/wake, cancellation, and cleanup.
-3. Keep the probe out of the product architecture. Remove it after retaining
-   commands, versions, results, and failure classification.
-4. Compare the measured recovery and correctness value with added dependency,
-   lifecycle, platform-policy, security, and maintenance cost.
-5. Record an explicit continue or cancel decision in LeanTTY's active work list.
+1. Connect one Pane-owned ArkTS client to the native owner and existing Terminal
+   Surface, with generation isolation and a strict `mosh [user@]host|alias`
+   command entry.
+2. Exercise a real shell, tmux, and basic editor through a signed HAP on the
+   physical PC.
+3. Verify normal use, interruption, address change, lock, sleep, UDP block,
+   recovery, cancellation, Pane close, and secret cleanup.
+4. Compare recovery and correctness with current SSH behavior, then record the
+   final integrate or remove decision in LeanTTY.
 
 Do not infer success from buildability, SSH/SFTP lifecycle tests, a host-to-host
 UDP exchange, or official API availability. A failed probe is also useful: if
 ordinary third-party UDP cannot recover reliably without disproportionate
 platform policy, cancel the integration rather than add workarounds.
 
-## Conditions after a continue decision
+## Re-entry conditions for this library
 
-If LeanTTY records a continue decision, implement the smallest vertical slice:
+Do not extend the library from the remaining LeanTTY plan alone. Reopen core
+development only when one of these conditions supplies concrete evidence:
 
-1. reuse its Host, verification, authentication, and secret-handling policy to
-   start the stock `mosh-server` and parse the bootstrap result;
-2. create one Pane-owned Mosh Session with explicit cancellation and generation
-   isolation;
-3. feed bounded ordered VT bytes and explicit full repaint into the existing
-   Terminal Surface;
-4. route input and resize directly through that Session without introducing a
-   generic transport interface; and
-5. run shell, tmux, editor, interruption, address-change, lock, sleep, UDP-block,
-   recovery, cancellation, and Pane-close acceptance on the physical PC.
+1. physical LeanTTY testing reproduces a protocol or public API defect;
+2. an observed HarmonyOS socket error needs a narrow, bounded recovery rule;
+3. stock-server evidence justifies a reachability or remote-exit contract;
+4. a dependency security or maintenance event requires action; or
+5. the maintainer starts a publication review with a repository, nonzero
+   version, immutable tag, and package metadata.
 
-Before a committed cross-repository dependency is chosen, the maintainer must
-also select a stable source and version identity for this crate. The current
-`0.0.0`, `publish = false`, and absent repository metadata are acceptable for a
-local feasibility build, not for a reproducible product dependency.
+Until the publication condition is met, `0.0.0` and `publish = false` remain.
+The local path dependency is suitable for development evidence, not a LeanTTY
+production candidate.

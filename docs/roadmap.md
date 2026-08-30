@@ -218,13 +218,13 @@ metadata are chosen.
 ## Phase 4: Integrate one LeanTTY vertical slice
 
 The 2026-08-30 [integration entry review](leantty-integration-entry-review.md)
-confirms that this crate can coexist with LeanTTY's native dependency graph and
-link for ARM64 HarmonyOS. Product integration remains gated on LeanTTY's
-app-level UDP/lifecycle probe, measured SSH comparison, and explicit continue or
-cancel decision. Buildability and platform API availability do not satisfy the
-gate.
+records successful native consumer integration at commit `69450f4`. LeanTTY
+reused its SSH security path, established an independent native Mosh owner, and
+linked this crate in an ARM64 OHOS release build. The library core is frozen at
+that consumer milestone. Product integration remains open until LeanTTY connects
+its Pane and Terminal Surface and completes physical Session and recovery tests.
 
-- [ ] Keep LeanTTY responsible for Host resolution, host verification,
+- [x] Keep LeanTTY responsible for Host resolution, host verification,
   authentication, and controlled server startup.
 - [ ] Connect one Pane-owned Mosh Session to one Terminal Surface without a
   generic Transport plugin layer.
@@ -233,6 +233,11 @@ gate.
   lock, sleep, UDP block, recovery, cancellation, and Pane close.
 - [ ] Integrate only if measured recovery, correctness, security, and maintenance
   value clearly exceed the added complexity.
+
+Reopen library development only for a reproduced protocol or API defect, an
+observed platform recovery rule, a dependency security event, or an explicit
+publication review. LeanTTY product work does not by itself authorize new core
+features.
 
 ## Out of scope
 

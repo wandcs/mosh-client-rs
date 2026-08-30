@@ -26,11 +26,16 @@ still converges to a stock-server marker.
 The Phase 2 viability gate found no material terminal-correctness or recovery
 deficit within the declared local compatibility scope. Public contract tests
 cover validation, owner shutdown, state, and idempotent cancellation; a stock
-1.4.0 interactive fixture now drives the same public API. The Phase 3F security
-and packaging review keeps the crate unpublished until the maintainer chooses
-a release version, public repository, and package metadata. Physical-network
-and LeanTTY gates remain open. See [the roadmap](docs/roadmap.md) and
-[the security and publication review](docs/security-publication-review.md).
+1.4.0 interactive fixture drives the same public API. LeanTTY has also integrated
+the crate behind an independent native Mosh owner and linked it in an ARM64 OHOS
+release build without adding a generic Transport layer. Pane, Terminal Surface,
+command-entry, and physical Session gates remain open in LeanTTY.
+
+The Phase 3F security and packaging review keeps the crate unpublished until the
+maintainer chooses a release version, immutable tag, and complete package
+metadata. See [the roadmap](docs/roadmap.md), the
+[LeanTTY integration review](docs/leantty-integration-entry-review.md), and the
+[security and publication review](docs/security-publication-review.md).
 
 ## Library shape
 
