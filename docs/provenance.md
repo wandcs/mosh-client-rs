@@ -495,7 +495,10 @@ Author:
 - Behavior: an embedding client may select adaptive, always, or never local
   prediction display per Session; adaptive is the standard default. Prediction
   remains tentative display state until server echo acknowledgement confirms
-  its epoch and authoritative terminal state converges.
+  its epoch and authoritative terminal state converges. A 2026-08-31 follow-up
+  proved through the public Session API that a confirmed `Always` epoch still
+  emits its next eligible byte during complete bidirectional UDP loss, while a
+  concurrent `Never` Session emits no VT output before recovery.
 - Evidence class: public command contract, published protocol design, and
   project-controlled stock-server measurement.
 - Source: the public [Mosh usage contract](https://mosh.org/), the
@@ -508,10 +511,15 @@ Author:
   reuse authenticated RTT-derived frame pacing as the slow-link signal. The
   project-owned adaptive policy enables above a 30 ms frame interval, disables
   at or below 20 ms after visible convergence, and temporarily enables after a
-  250 ms eligible pending projection.
+  250 ms eligible pending projection. The public full-loss fixture passed the
+  existing production implementation, so it requires no predictor, terminal,
+  wire, or public-API change.
 - Architecture comparisons: stock Mosh, MoshCatty, and `mosh-go` informed the
   public shape and complexity comparison only. No source, test, wire rule, or
   file structure was copied or translated.
 - Limits: the mode changes only whether the existing confirmed-epoch ASCII
   projection is displayed. It does not expand prediction eligibility, mutate
   terminal authority, add a wire field, or claim identical stock heuristics.
+  The full-loss fixture uses normal stock PTY kernel echo and does not prove
+  confirmation in a `stty -echo` user-space echo fixture or on LeanTTY's ARM64
+  device path.

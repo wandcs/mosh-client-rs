@@ -261,6 +261,20 @@ bounded library follow-up:
 - [x] Prove default selection, all modes, concurrent isolation, adaptive
   thresholds, resource bounds, and stock-server convergence.
 
+A later LeanTTY ARM64 run observed no `Always` output after its warmup and then
+blocked all UDP traffic, but its `stty -echo` user-space echo could not prove
+that stock echo acknowledgement had confirmed the epoch. A project-owned
+follow-up now uses normal stock PTY echo and only declares confirmation after
+observing predictive public VT output. It proves concurrent `Always` and
+`Never` behavior during complete bidirectional loss, packet drops, recovery,
+authoritative convergence, and isolation. The fixture passed without a
+production change; the remaining work is to correct the LeanTTY device fixture
+and inspect its integration boundary only if that corrected scenario still
+fails.
+
+- [x] Prove through the public Session contract that a confirmed `Always` epoch
+  survives complete UDP loss while `Never` stays authoritative-only.
+
 - [x] Keep LeanTTY responsible for Host resolution, host verification,
   authentication, and controlled server startup.
 - [ ] Connect one Pane-owned Mosh Session to one Terminal Surface without a
