@@ -33,4 +33,5 @@ pub(crate) const MAX_FRAME_INTERVAL_MS: u64 = 250;
 pub(crate) const STATE_CHANGE_COLLECTION_MS: u64 = 15;
 pub(crate) const MAX_ACKNOWLEDGEMENT_DELAY_MS: u64 = 100;
 pub(crate) const HEARTBEAT_INTERVAL_MS: u64 = 3_000;
+pub(crate) const GRACEFUL_CLOSE_ACK_TIMEOUT_MS: u64 = 4_000;
 pub(crate) const MAX_TIMESTAMP_REPLY_AGE_MS: u64 = 1_000;

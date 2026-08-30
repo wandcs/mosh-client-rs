@@ -59,14 +59,16 @@ The public API preserves the Phase 2 command and output limits. Input, resize,
 and repaint use the bounded command queue. Lifecycle state uses a separate
 latest-value channel because intermediate lifecycle observations carry no
 payload. Cancellation uses a dedicated idempotent signal, so it cannot wait
-behind a full command or output queue. Commands and output fail explicitly
-rather than being silently dropped.
+behind a full command or output queue. Graceful close uses a separate
+idempotent lifecycle signal: commands accepted before it remain ordered, while
+later commands fail explicitly. Commands and output are never silently dropped.
 
 Retries have no fixed count because Mosh is designed to survive long outages.
 Rate, retained state, and memory remain bounded. The Session stays recoverable
-until the caller cancels it, a sequence is exhausted, or an unrecoverable
-protocol or local I/O error occurs. Recognizing a clean authenticated peer exit
-is deferred until a stock fixture establishes its wire signal.
+until the caller closes or cancels it, a clean authenticated peer close
+arrives, a sequence is exhausted, or an unrecoverable protocol or local I/O
+error occurs. A graceful close reserves no ordinary SSP history entry for
+`u64::MAX`.
 
 ## Terminal
 
@@ -104,11 +106,14 @@ stale display state; it does not classify an echo as correct or incorrect.
 | Frame interval | 20–250 ms | Published Mosh design |
 | Idle heartbeat | 3 s | Published Mosh design |
 | Incomplete-fragment expiry | 10 s | Local memory bound |
+| Graceful-close acknowledgement window | 4 s | Stock 1.4.0 black-box observation |
 
 Use monotonic time. A long suspension advances timers once, coalesces expired
-work, and never replays every missed tick. Network silence does not close the
-Session or change its lifecycle state in the initial API; a later reachability
-signal needs its own evidence and decision.
+work, and never replays every missed tick. The four-second close window begins
+only after an explicit local close request; expiry reports local completion but
+does not prove peer receipt. Ordinary network silence does not close the
+Session or change its lifecycle state; a later reachability signal needs its
+own evidence and decision.
 An outgoing timestamp reply is omitted after one second, when no peer timestamp
 exists, or when the adjusted value would collide with the wire's `0xffff`
 no-reply marker.

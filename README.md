@@ -5,8 +5,9 @@ An independent, unofficial, wire-compatible Mosh client implementation in Rust.
 ## Status
 
 Phase 1's bounded authenticated UDP core and Phase 2 are complete. Phase 3 now
-exports the first small Session API with explicit lifecycle state, prompt
-cancellation, bounded commands, and ordered VT output. Phase 2
+exports the first small Session API with explicit lifecycle state, distinct
+graceful close and prompt cancellation, bounded commands, and ordered VT
+output. Phase 2
 includes SSP synchronization, timing and recovery scheduling, bounded fragment
 reassembly, authoritative terminal state, VT painting, and a Session
 driver with bounded confirmed-epoch ASCII prediction. A local stock
@@ -25,8 +26,9 @@ still converges to a stock-server marker.
 
 The Phase 2 viability gate found no material terminal-correctness or recovery
 deficit within the declared local compatibility scope. Public contract tests
-cover validation, owner shutdown, state, and idempotent cancellation; a stock
-1.4.0 interactive fixture drives the same public API. LeanTTY has also integrated
+cover validation, owner shutdown, state, graceful close, and idempotent
+cancellation; stock 1.4.0 fixtures drive the same public API and verify both
+authenticated close directions. LeanTTY has also integrated
 the crate behind an independent native Mosh owner and linked it in an ARM64 OHOS
 release build without adding a generic Transport layer. Pane, Terminal Surface,
 command-entry, and physical Session gates remain open in LeanTTY.
@@ -41,10 +43,12 @@ metadata. See [the roadmap](docs/roadmap.md), the
 
 `Session::connect` returns a caller-owned `Session` handle and a `SessionTask`.
 The caller runs the task on its own Tokio executor, sends input or resize
-commands through the handle, consumes ordered VT chunks, and explicitly
-cancels or drops the Session. See
+commands through the handle, consumes ordered VT chunks, and explicitly closes,
+cancels, or drops the Session. See
 [ADR 0007](docs/decisions/0007-public-session-api.md) for lifecycle and
-backpressure semantics.
+backpressure semantics and
+[ADR 0008](docs/decisions/0008-authenticated-graceful-close.md) for the
+authenticated close exchange.
 
 ## Goal
 

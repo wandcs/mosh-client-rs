@@ -224,6 +224,20 @@ linked this crate in an ARM64 OHOS release build. The library core is frozen at
 that consumer milestone. Product integration remains open until LeanTTY connects
 its Pane and Terminal Surface and completes physical Session and recovery tests.
 
+LeanTTY also reproduced a library lifecycle defect: local cancellation did not
+perform the stock close exchange, and authenticated remote logout did not end
+the public Session. [ADR 0008](decisions/0008-authenticated-graceful-close.md)
+reopened that bounded API/protocol work. Stock 1.4.0 black-box fixtures now
+establish both directions and the close timeout; the additive graceful-close
+API preserves hard cancellation, ordinary outage recovery, and the existing
+public lifecycle states.
+
+- [x] Independently establish the stock 1.4.0 close target, acknowledgement,
+  retransmission window, and final-difference behavior.
+- [x] Add graceful local close and authenticated remote completion without
+  weakening cancellation, owner drop, bounds, output drain, or Session
+  isolation.
+
 - [x] Keep LeanTTY responsible for Host resolution, host verification,
   authentication, and controlled server startup.
 - [ ] Connect one Pane-owned Mosh Session to one Terminal Surface without a

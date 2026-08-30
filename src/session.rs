@@ -7,6 +7,7 @@ use std::fmt;
 use std::future::poll_fn;
 use std::io::ErrorKind;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
+use std::sync::Mutex;
 use std::time::Duration;
 
 use tokio::net::UdpSocket;
@@ -16,10 +17,12 @@ use tokio::time::Instant;
 
 use crate::Bootstrap;
 use crate::fragment::{self, FragmentReassembler, ReassemblyError, ReassemblyOutcome};
-use crate::instruction::{ClientOperation, InstructionError, TransportInstruction};
+use crate::instruction::{
+    ClientOperation, InstructionError, PROTOCOL_VERSION, SHUTDOWN_STATE, TransportInstruction,
+};
 use crate::limits::{
-    MAX_DATAGRAM_BYTES, MAX_FRAGMENT_BODY_BYTES, MAX_INPUT_COMMAND_BYTES, PENDING_OUTPUT_CHUNKS,
-    SESSION_COMMAND_QUEUE_CAPACITY,
+    GRACEFUL_CLOSE_ACK_TIMEOUT_MS, MAX_DATAGRAM_BYTES, MAX_FRAGMENT_BODY_BYTES,
+    MAX_INPUT_COMMAND_BYTES, PENDING_OUTPUT_CHUNKS, SESSION_COMMAND_QUEUE_CAPACITY,
 };
 use crate::packet::{Direction, PacketCodec, PacketError, PacketReceiver, SendSequence};
 use crate::prediction::LocalPrediction;
@@ -49,6 +52,10 @@ pub enum SessionState {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum SessionExit {
+    /// A locally requested graceful close completed or reached its bounded ACK wait.
+    LocalClosed,
+    /// The authenticated peer requested a graceful close.
+    RemoteClosed,
     /// The owning application explicitly cancelled the Session.
     Cancelled,
     /// The Session handle or its output consumer was dropped.
@@ -119,6 +126,8 @@ pub struct Session {
     commands: mpsc::Sender<SessionCommand>,
     output: mpsc::Receiver<Vec<u8>>,
     cancellation: watch::Sender<bool>,
+    graceful_close: watch::Sender<bool>,
+    close_requested: Mutex<bool>,
     state: watch::Receiver<SessionState>,
 }
 
@@ -142,6 +151,7 @@ impl Session {
             commands,
             output,
             cancellation,
+            graceful_close,
             state,
         } = channels;
         Ok((
@@ -149,6 +159,8 @@ impl Session {
                 commands,
                 output,
                 cancellation,
+                graceful_close,
+                close_requested: Mutex::new(false),
                 state,
             },
             SessionTask { driver },
@@ -194,6 +206,23 @@ impl Session {
         self.send_command(SessionCommand::Repaint).await
     }
 
+    /// Requests an idempotent authenticated close exchange with the peer.
+    ///
+    /// Commands accepted before this call remain ordered before the close.
+    /// Later input, resize, and repaint requests return
+    /// [`SessionCommandError::Closed`]. Use [`Session::cancel`] when the local
+    /// task must stop promptly without waiting for the peer.
+    pub fn close(&self) {
+        let mut requested = self
+            .close_requested
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if !*requested {
+            *requested = true;
+            self.graceful_close.send_replace(true);
+        }
+    }
+
     /// Requests prompt, idempotent cancellation outside the bounded command queue.
     pub fn cancel(&self) {
         self.cancellation.send_replace(true);
@@ -224,13 +253,20 @@ impl Session {
     }
 
     async fn send_command(&self, command: SessionCommand) -> Result<(), SessionCommandError> {
-        if *self.cancellation.borrow() || self.state() == SessionState::Closed {
+        let permit = self
+            .commands
+            .reserve()
+            .await
+            .map_err(|_| SessionCommandError::Closed)?;
+        let close_requested = self
+            .close_requested
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if *close_requested || *self.cancellation.borrow() || self.state() == SessionState::Closed {
             return Err(SessionCommandError::Closed);
         }
-        self.commands
-            .send(command)
-            .await
-            .map_err(|_| SessionCommandError::Closed)
+        permit.send(command);
+        Ok(())
     }
 }
 
@@ -355,6 +391,7 @@ pub(crate) struct SessionChannels {
     pub(crate) commands: mpsc::Sender<SessionCommand>,
     pub(crate) output: mpsc::Receiver<Vec<u8>>,
     pub(crate) cancellation: watch::Sender<bool>,
+    pub(crate) graceful_close: watch::Sender<bool>,
     pub(crate) state: watch::Receiver<SessionState>,
 }
 
@@ -379,7 +416,9 @@ pub(crate) struct SessionDriver {
     command_rx: mpsc::Receiver<SessionCommand>,
     output_tx: mpsc::Sender<Vec<u8>>,
     cancellation_rx: watch::Receiver<bool>,
+    graceful_close_rx: watch::Receiver<bool>,
     state_tx: watch::Sender<SessionState>,
+    final_terminal: Option<TerminalState>,
 }
 
 impl SessionDriver {
@@ -408,6 +447,7 @@ impl SessionDriver {
         let (command_tx, command_rx) = mpsc::channel(SESSION_COMMAND_QUEUE_CAPACITY);
         let (output_tx, output_rx) = mpsc::channel(PENDING_OUTPUT_CHUNKS);
         let (cancellation_tx, cancellation_rx) = watch::channel(false);
+        let (graceful_close_tx, graceful_close_rx) = watch::channel(false);
         let (state_tx, state_rx) = watch::channel(SessionState::Connecting);
 
         Ok((
@@ -432,12 +472,15 @@ impl SessionDriver {
                 command_rx,
                 output_tx,
                 cancellation_rx,
+                graceful_close_rx,
                 state_tx,
+                final_terminal: None,
             },
             SessionChannels {
                 commands: command_tx,
                 output: output_rx,
                 cancellation: cancellation_tx,
+                graceful_close: graceful_close_tx,
                 state: state_rx,
             },
         ))
@@ -478,9 +521,12 @@ impl SessionDriver {
                     let needs_output = self.output_requested;
                     match wait_next(
                         &self.socket,
-                        &mut self.command_rx,
-                        &self.output_tx,
-                        &mut self.cancellation_rx,
+                        WaitChannels {
+                            commands: &mut self.command_rx,
+                            output: &self.output_tx,
+                            cancellation: &mut self.cancellation_rx,
+                            graceful_close: Some(&mut self.graceful_close_rx),
+                        },
                         &mut inbound,
                         wake_at,
                         needs_output,
@@ -490,11 +536,20 @@ impl SessionDriver {
                         Wake::Command(command) => self.handle_command(command)?,
                         Wake::Datagram(result) => {
                             let (length, source) = result?;
-                            self.handle_datagram(&mut inbound[..length], source)?;
+                            if self.handle_datagram(&mut inbound[..length], source)?
+                                == DatagramOutcome::RemoteShutdown
+                            {
+                                let now_ms = self.now_ms()?;
+                                if !self.send_shutdown_acknowledgement(now_ms).await? {
+                                    return Ok(SessionExit::Cancelled);
+                                }
+                                return self.finish_graceful_close(SessionExit::RemoteClosed).await;
+                            }
                         }
                         Wake::Output(permit) => self.emit_output(permit)?,
                         Wake::OwnerDropped => return Ok(SessionExit::OwnerDropped),
                         Wake::Cancelled => return Ok(SessionExit::Cancelled),
+                        Wake::GracefulClose => return self.run_local_shutdown().await,
                         Wake::Timer => {}
                     }
                 }
@@ -593,6 +648,26 @@ impl SessionDriver {
             .client_history
             .difference(send_plan.base_state, send_plan.target_state)?;
         let instruction = send_plan.instruction(difference, INITIAL_CHAFF.to_vec());
+        if !self
+            .send_transport_instruction(&instruction, now_ms)
+            .await?
+        {
+            return Ok(());
+        }
+
+        let commit = self.synchronization.commit_send(send_plan)?;
+        if let Some(evicted) = commit.capacity_evicted_state {
+            self.client_history.remove_checkpoint(evicted);
+        }
+        self.scheduler.commit_send(wake_plan)?;
+        Ok(())
+    }
+
+    async fn send_transport_instruction(
+        &mut self,
+        instruction: &TransportInstruction,
+        now_ms: u64,
+    ) -> Result<bool, DriverError> {
         let compressed = instruction.encode_zlib()?;
         let timestamps = self.datagram_timing.outgoing(now_ms)?;
         let identifier = self.fragment_identifier.take()?;
@@ -602,7 +677,7 @@ impl SessionDriver {
 
         for (number, body) in compressed.chunks(MAX_FRAGMENT_BODY_BYTES).enumerate() {
             if *self.cancellation_rx.borrow() {
-                return Ok(());
+                return Ok(false);
             }
             let number =
                 u16::try_from(number).map_err(|_| DriverError::FragmentIdentifierExhausted)?;
@@ -631,19 +706,31 @@ impl SessionDriver {
             }
         }
 
-        let commit = self.synchronization.commit_send(send_plan)?;
-        if let Some(evicted) = commit.capacity_evicted_state {
-            self.client_history.remove_checkpoint(evicted);
-        }
-        self.scheduler.commit_send(wake_plan)?;
-        Ok(())
+        Ok(true)
     }
 
     fn handle_datagram(
         &mut self,
         datagram: &mut [u8],
         source: SocketAddr,
-    ) -> Result<(), DriverError> {
+    ) -> Result<DatagramOutcome, DriverError> {
+        let Some(instruction) = self.decode_datagram(datagram, source)? else {
+            return Ok(DatagramOutcome::Continue);
+        };
+        if instruction.is_shutdown() {
+            self.handle_remote_shutdown(&instruction)?;
+            Ok(DatagramOutcome::RemoteShutdown)
+        } else {
+            self.handle_normal_instruction(&instruction)?;
+            Ok(DatagramOutcome::Continue)
+        }
+    }
+
+    fn decode_datagram(
+        &mut self,
+        datagram: &mut [u8],
+        source: SocketAddr,
+    ) -> Result<Option<TransportInstruction>, DriverError> {
         let now_ms = self.now_ms()?;
         let opened = match self
             .packet_receiver
@@ -658,7 +745,7 @@ impl SessionDriver {
                 | PacketError::Replay
                 | PacketError::TooOld
                 | PacketError::UnexpectedSource,
-            ) => return Ok(()),
+            ) => return Ok(None),
             Err(error) => return Err(error.into()),
         };
         let sequence = opened.sequence;
@@ -671,10 +758,17 @@ impl SessionDriver {
         )?;
         let ReassemblyOutcome::Complete(compressed) = self.reassembler.push(now_ms, decoded)?
         else {
-            return Ok(());
+            return Ok(None);
         };
-        let instruction = TransportInstruction::decode_zlib(&compressed)?;
-        let transition = self.synchronization.begin_receive(&instruction)?;
+        Ok(Some(TransportInstruction::decode_zlib(&compressed)?))
+    }
+
+    fn handle_normal_instruction(
+        &mut self,
+        instruction: &TransportInstruction,
+    ) -> Result<(), DriverError> {
+        let now_ms = self.now_ms()?;
+        let transition = self.synchronization.begin_receive(instruction)?;
         self.client_history
             .acknowledge(self.synchronization.known_receiver_state())?;
         self.scheduler.note_acknowledgement_needed(now_ms)?;
@@ -710,6 +804,184 @@ impl SessionDriver {
         Ok(())
     }
 
+    fn handle_remote_shutdown(
+        &mut self,
+        instruction: &TransportInstruction,
+    ) -> Result<(), DriverError> {
+        let mut shutdown = instruction.clone();
+        if shutdown.acknowledged_state == SHUTDOWN_STATE {
+            shutdown.acknowledged_state = self.synchronization.known_receiver_state();
+        }
+        let transition = self.synchronization.begin_shutdown_receive(&shutdown)?;
+        self.client_history
+            .acknowledge(self.synchronization.known_receiver_state())?;
+        let base = self
+            .terminal_states
+            .get(&transition.base_state)
+            .ok_or(DriverError::MissingTerminalState)?;
+        let difference = TerminalDifference::decode(transition.difference)?;
+        self.final_terminal = Some(base.apply(&difference)?);
+        self.prediction.reset();
+        self.output_requested = true;
+        Ok(())
+    }
+
+    async fn send_shutdown_acknowledgement(&mut self, now_ms: u64) -> Result<bool, DriverError> {
+        let state = self.synchronization.advance_local()?;
+        self.client_history.checkpoint(state);
+        let send_plan = self.synchronization.plan_send(
+            now_ms,
+            self.datagram_timing.estimator().retransmission_timeout_ms(),
+        )?;
+        let difference = self
+            .client_history
+            .difference(send_plan.base_state, send_plan.target_state)?;
+        let mut instruction = send_plan.instruction(difference, INITIAL_CHAFF.to_vec());
+        instruction.acknowledged_state = SHUTDOWN_STATE;
+        if !self
+            .send_transport_instruction(&instruction, now_ms)
+            .await?
+        {
+            return Ok(false);
+        }
+        let commit = self.synchronization.commit_send(send_plan)?;
+        if let Some(evicted) = commit.capacity_evicted_state {
+            self.client_history.remove_checkpoint(evicted);
+        }
+        Ok(true)
+    }
+
+    async fn run_local_shutdown(&mut self) -> Result<SessionExit, DriverError> {
+        let started_ms = self.now_ms()?;
+        let deadline_ms = started_ms
+            .checked_add(GRACEFUL_CLOSE_ACK_TIMEOUT_MS)
+            .ok_or(DriverError::ClockExhausted)?;
+        let mut next_send_ms = started_ms;
+        let mut inbound = [0_u8; MAX_DATAGRAM_BYTES];
+
+        loop {
+            if *self.cancellation_rx.borrow() {
+                return Ok(SessionExit::Cancelled);
+            }
+            let now_ms = self.now_ms()?;
+            if now_ms >= deadline_ms {
+                return Ok(SessionExit::LocalClosed);
+            }
+            if now_ms >= next_send_ms {
+                if !self.send_shutdown_request(now_ms).await? {
+                    return Ok(SessionExit::Cancelled);
+                }
+                next_send_ms = now_ms
+                    .checked_add(self.datagram_timing.estimator().retransmission_timeout_ms())
+                    .ok_or(DriverError::ClockExhausted)?;
+            }
+
+            let wake_ms = next_send_ms.min(deadline_ms);
+            let wake_at = self
+                .started_at
+                .checked_add(Duration::from_millis(wake_ms))
+                .ok_or(DriverError::ClockExhausted)?;
+            match wait_next(
+                &self.socket,
+                WaitChannels {
+                    commands: &mut self.command_rx,
+                    output: &self.output_tx,
+                    cancellation: &mut self.cancellation_rx,
+                    graceful_close: None,
+                },
+                &mut inbound,
+                wake_at,
+                self.output_requested,
+            )
+            .await
+            {
+                Wake::Command(command) => self.handle_command(command)?,
+                Wake::Datagram(result) => {
+                    let (length, source) = result?;
+                    let Some(instruction) = self.decode_datagram(&mut inbound[..length], source)?
+                    else {
+                        continue;
+                    };
+                    let acknowledged = instruction.acknowledged_state == SHUTDOWN_STATE;
+                    if instruction.is_shutdown() {
+                        self.handle_remote_shutdown(&instruction)?;
+                        let now_ms = self.now_ms()?;
+                        if !self.send_shutdown_acknowledgement(now_ms).await? {
+                            return Ok(SessionExit::Cancelled);
+                        }
+                    } else {
+                        let mut ordinary = instruction;
+                        if acknowledged {
+                            ordinary.acknowledged_state =
+                                self.synchronization.known_receiver_state();
+                        }
+                        self.handle_normal_instruction(&ordinary)?;
+                    }
+                    if acknowledged || self.final_terminal.is_some() {
+                        return self.finish_graceful_close(SessionExit::LocalClosed).await;
+                    }
+                }
+                Wake::Output(permit) => self.emit_output(permit)?,
+                Wake::OwnerDropped => return Ok(SessionExit::OwnerDropped),
+                Wake::Cancelled => return Ok(SessionExit::Cancelled),
+                Wake::GracefulClose | Wake::Timer => {}
+            }
+        }
+    }
+
+    async fn send_shutdown_request(&mut self, now_ms: u64) -> Result<bool, DriverError> {
+        let base_state = self.synchronization.known_receiver_state();
+        let current_state = self.synchronization.local_latest();
+        let difference = self.client_history.difference(base_state, current_state)?;
+        let instruction = TransportInstruction {
+            protocol_version: PROTOCOL_VERSION,
+            base_state,
+            new_state: SHUTDOWN_STATE,
+            acknowledged_state: self.synchronization.remote_latest(),
+            discard_before_state: base_state,
+            state_difference: difference,
+            chaff: INITIAL_CHAFF.to_vec(),
+        };
+        self.send_transport_instruction(&instruction, now_ms).await
+    }
+
+    async fn finish_graceful_close(
+        &mut self,
+        exit: SessionExit,
+    ) -> Result<SessionExit, DriverError> {
+        if !self.output_requested {
+            return Ok(exit);
+        }
+        if *self.cancellation_rx.borrow() {
+            return Ok(SessionExit::Cancelled);
+        }
+        let mut cancellation = Box::pin(self.cancellation_rx.changed());
+        let mut output = Box::pin(self.output_tx.clone().reserve_owned());
+        let permit = poll_fn(|context| {
+            if let Poll::Ready(changed) = cancellation.as_mut().poll(context) {
+                return Poll::Ready(Err(if changed.is_ok() {
+                    SessionExit::Cancelled
+                } else {
+                    SessionExit::OwnerDropped
+                }));
+            }
+            if let Poll::Ready(permit) = output.as_mut().poll(context) {
+                return Poll::Ready(permit.map_err(|_| SessionExit::OwnerDropped));
+            }
+            Poll::Pending
+        })
+        .await;
+        drop(cancellation);
+        drop(output);
+        match permit {
+            Ok(permit) => {
+                self.emit_output(permit)?;
+                Ok(exit)
+            }
+            Err(exit) => Ok(exit),
+        }
+    }
+
     fn discard_terminal_states(&mut self, floor: u64, capacity_evicted: Option<u64>) {
         self.terminal_states.retain(|state, _| *state >= floor);
         if let Some(evicted) = capacity_evicted {
@@ -736,10 +1008,19 @@ impl SessionDriver {
     }
 
     fn latest_terminal_state(&self) -> Result<&TerminalState, DriverError> {
+        if let Some(final_terminal) = &self.final_terminal {
+            return Ok(final_terminal);
+        }
         self.terminal_states
             .get(&self.synchronization.remote_latest())
             .ok_or(DriverError::MissingTerminalState)
     }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum DatagramOutcome {
+    Continue,
+    RemoteShutdown,
 }
 
 enum Wake {
@@ -748,22 +1029,35 @@ enum Wake {
     Output(OwnedPermit<Vec<u8>>),
     OwnerDropped,
     Cancelled,
+    GracefulClose,
     Timer,
+}
+
+struct WaitChannels<'a> {
+    commands: &'a mut mpsc::Receiver<SessionCommand>,
+    output: &'a mpsc::Sender<Vec<u8>>,
+    cancellation: &'a mut watch::Receiver<bool>,
+    graceful_close: Option<&'a mut watch::Receiver<bool>>,
 }
 
 async fn wait_next(
     socket: &UdpSocket,
-    commands: &mut mpsc::Receiver<SessionCommand>,
-    output: &mpsc::Sender<Vec<u8>>,
-    cancellation: &mut watch::Receiver<bool>,
+    channels: WaitChannels<'_>,
     inbound: &mut [u8],
     wake_at: Instant,
     needs_output: bool,
 ) -> Wake {
+    let WaitChannels {
+        commands,
+        output,
+        cancellation,
+        graceful_close,
+    } = channels;
     let mut command = Box::pin(commands.recv());
     let mut datagram = Box::pin(socket.recv_from(inbound));
     let mut output = needs_output.then(|| Box::pin(output.clone().reserve_owned()));
     let mut cancellation = Box::pin(cancellation.changed());
+    let mut graceful_close = graceful_close.map(|close| Box::pin(close.changed()));
     let mut timer = Box::pin(tokio::time::sleep_until(wake_at));
 
     poll_fn(|context| {
@@ -775,6 +1069,11 @@ async fn wait_next(
                 Some(command) => Wake::Command(command),
                 None => Wake::OwnerDropped,
             });
+        }
+        if let Some(graceful_close) = graceful_close.as_mut() {
+            if let Poll::Ready(Ok(())) = graceful_close.as_mut().poll(context) {
+                return Poll::Ready(Wake::GracefulClose);
+            }
         }
         if timer.as_mut().poll(context).is_ready() {
             return Poll::Ready(Wake::Timer);

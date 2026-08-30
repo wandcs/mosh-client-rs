@@ -325,10 +325,10 @@ async fn exercise_public_session_isolation(
     replacement.send_and_wait("REPLACEMENT_SESSION_ONLY").await;
     assert!(!replacement.contents().contains("SESSION_A_ONLY"));
 
-    session_b.drop_owner().await;
+    session_b.close().await;
     assert!(!replacement.task_is_finished());
-    replacement.send_and_wait("REPLACEMENT_AFTER_B_DROP").await;
-    replacement.cancel().await;
+    replacement.send_and_wait("REPLACEMENT_AFTER_B_CLOSE").await;
+    replacement.drop_owner().await;
 }
 
 struct PublicStockSession {
@@ -422,6 +422,24 @@ impl PublicStockSession {
             .expect("Session owner missing")
             .cancel();
         assert_eq!(self.join_task().await, SessionExit::Cancelled);
+        assert_eq!(
+            self.session
+                .as_ref()
+                .expect("Session owner missing")
+                .state(),
+            SessionState::Closed
+        );
+    }
+
+    async fn close(&mut self) {
+        let mut session = self.session.take().expect("Session owner missing");
+        session.close();
+        let drain = tokio::spawn(async move {
+            while session.next_output().await.is_some() {}
+            session
+        });
+        assert_eq!(self.join_task().await, SessionExit::LocalClosed);
+        self.session = Some(drain.await.expect("Session output drain panicked"));
         assert_eq!(
             self.session
                 .as_ref()

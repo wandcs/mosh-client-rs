@@ -45,7 +45,8 @@ Before the compatibility claim expands, tests must cover:
 - valid, malformed, duplicate, replayed, reordered, delayed, and lost packets;
 - client source-address changes without changing the fixed server endpoint or
   losing session state;
-- cancellation, timeout, server disappearance, and late packets;
+- graceful local close, authenticated remote close, cancellation, timeout,
+  server disappearance, and late packets;
 - resize, Unicode, wide characters, sustained input, and sustained output;
 - shell, tmux, a basic editor, alternate screen, and scrollback behavior.
 
@@ -61,9 +62,11 @@ alternate-buffer flag. A test-only loopback relay proves recovery after a
 1.5-second bidirectional interruption and UDP source-port change; another test
 proves that server disappearance leaves the Session repaintable and
 cancellable. A Session fixture verifies remote PTY resize from 80×24
-to 100×30 and 60×20, followed by a replacement-surface repaint. Physical
-address change, long-outage behavior, and scrollback characterization remain
-open.
+to 100×30 and 60×20, followed by a replacement-surface repaint. Stock 1.4.0
+black-box fixtures also cover the reserved close target in both
+directions, the peer acknowledgement shape, and the bounded no-ACK wait.
+Physical address change, long-outage behavior, and scrollback characterization
+remain open.
 
 The full evidence matrix, offline-first policy, runtime isolation cases, VT
 output contract, and physical LeanTTY acceptance are defined in
@@ -72,7 +75,7 @@ output contract, and physical LeanTTY acceptance are defined in
 ## Deferred compatibility
 
 IPv6, configurable port ranges, prediction modes, locale negotiation, broad
-terminal application coverage, clean remote-exit recognition, recoverable
-local UDP send errors, reachability events, and non-LeanTTY consumers require
-separate evidence. ProxyJump applies only to an embedding application's SSH
-bootstrap; it does not imply UDP reachability.
+terminal application coverage, recoverable local UDP send errors, reachability
+events, and non-LeanTTY consumers require separate evidence. ProxyJump applies
+only to an embedding application's SSH bootstrap; it does not imply UDP
+reachability.

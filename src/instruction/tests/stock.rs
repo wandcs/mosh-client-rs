@@ -18,7 +18,7 @@ use crate::fragment;
 #[cfg(target_os = "linux")]
 use crate::limits::MAX_DATAGRAM_BYTES;
 #[cfg(target_os = "linux")]
-use crate::packet::{Direction, PacketReceiver};
+use crate::packet::{Direction, PacketCodec, PacketReceiver};
 #[cfg(target_os = "linux")]
 use crate::test_support::{STOCK_1_4_0_KEY_BYTES, STOCK_1_4_0_KEY_TEXT, assert_stock_1_4_0};
 
@@ -117,6 +117,135 @@ fn stock_1_4_0_client_resize_reuses_the_terminal_size_operation() {
 }
 
 #[cfg(target_os = "linux")]
+#[test]
+#[ignore = "requires a locally installed stock mosh-client 1.4.0 and util-linux script"]
+fn stock_1_4_0_client_graceful_close_has_a_reserved_state_shape() {
+    assert_stock_1_4_0("mosh-client");
+
+    let socket = UdpSocket::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+    socket
+        .set_read_timeout(Some(Duration::from_secs(3)))
+        .unwrap();
+    let mut child = spawn_stock_client(&socket, "stty rows 24 cols 80");
+    let key = SessionKey::new(STOCK_1_4_0_KEY_BYTES);
+    let mut receiver = PacketReceiver::new(&key, Direction::ClientToServer);
+
+    let initial = receive_stock_instruction(&socket, &mut receiver);
+    child
+        .stdin_mut()
+        .write_all(b"\x1e.")
+        .expect("failed to request stock client shutdown");
+    child.stdin_mut().flush().unwrap();
+
+    let shutdown = receive_stock_instruction(&socket, &mut receiver);
+    assert_eq!(
+        (
+            shutdown.base_state,
+            shutdown.new_state,
+            shutdown.acknowledged_state,
+            shutdown.discard_before_state,
+            shutdown.state_difference.len(),
+        ),
+        (0, u64::MAX, 0, 0, initial.state_difference.len()),
+    );
+    assert_eq!(shutdown.state_difference, initial.state_difference);
+
+    assert!(child.terminate(), "stock client fixture did not clean up");
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+#[ignore = "requires a locally installed stock mosh-client 1.4.0 and util-linux script"]
+fn stock_1_4_0_client_graceful_close_has_a_bounded_ack_wait() {
+    assert_stock_1_4_0("mosh-client");
+
+    let socket = UdpSocket::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+    socket
+        .set_read_timeout(Some(Duration::from_secs(3)))
+        .unwrap();
+    let mut child = spawn_stock_client(&socket, "stty rows 24 cols 80");
+    let key = SessionKey::new(STOCK_1_4_0_KEY_BYTES);
+    let mut receiver = PacketReceiver::new(&key, Direction::ClientToServer);
+
+    let _initial = receive_stock_instruction(&socket, &mut receiver);
+    child
+        .stdin_mut()
+        .write_all(b"\x1e.")
+        .expect("failed to request stock client shutdown");
+    child.stdin_mut().flush().unwrap();
+    let _shutdown = receive_stock_instruction(&socket, &mut receiver);
+
+    let started = std::time::Instant::now();
+    assert!(
+        child.wait_for_exit(Duration::from_secs(15)),
+        "stock client did not bound its graceful-close acknowledgement wait"
+    );
+    let elapsed = started.elapsed();
+    assert!(
+        elapsed >= Duration::from_secs(3),
+        "stock client exited before its observed shutdown acknowledgement window: {elapsed:?}"
+    );
+    assert!(
+        elapsed <= Duration::from_secs(6),
+        "stock client exceeded its observed shutdown acknowledgement window: {elapsed:?}"
+    );
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+#[ignore = "requires a locally installed stock mosh-client 1.4.0 and util-linux script"]
+fn stock_1_4_0_client_acknowledges_a_server_graceful_close() {
+    assert_stock_1_4_0("mosh-client");
+
+    let socket = UdpSocket::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+    socket
+        .set_read_timeout(Some(Duration::from_secs(3)))
+        .unwrap();
+    let mut child = spawn_stock_client(&socket, "stty rows 24 cols 80");
+    let key = SessionKey::new(STOCK_1_4_0_KEY_BYTES);
+    let mut receiver = PacketReceiver::new(&key, Direction::ClientToServer);
+
+    let (initial, peer) = receive_stock_instruction_with_peer(&socket, &mut receiver);
+    let shutdown = TransportInstruction {
+        protocol_version: PROTOCOL_VERSION,
+        base_state: 0,
+        new_state: u64::MAX,
+        acknowledged_state: initial.new_state,
+        discard_before_state: 0,
+        state_difference: Vec::new(),
+        chaff: vec![0],
+    };
+    let compressed = shutdown.encode_zlib().unwrap();
+    let mut plaintext = [0_u8; MAX_DATAGRAM_BYTES];
+    let plaintext_len = fragment::encode(0, None, 0, 0, true, &compressed, &mut plaintext).unwrap();
+    let codec = PacketCodec::new(&key);
+    let mut datagram = [0_u8; MAX_DATAGRAM_BYTES];
+    let datagram_len = codec
+        .seal(
+            Direction::ServerToClient,
+            0,
+            &plaintext[..plaintext_len],
+            &mut datagram,
+        )
+        .unwrap();
+    socket.send_to(&datagram[..datagram_len], peer).unwrap();
+
+    let acknowledgement = receive_stock_instruction(&socket, &mut receiver);
+    assert_eq!(acknowledgement.acknowledged_state, u64::MAX);
+    assert_eq!(
+        (
+            acknowledgement.base_state,
+            acknowledgement.new_state,
+            acknowledgement.discard_before_state,
+            acknowledgement.state_difference.len(),
+        ),
+        (1, 2, 1, 0),
+    );
+
+    assert!(child.terminate(), "stock client fixture did not clean up");
+}
+
+#[cfg(target_os = "linux")]
 fn spawn_stock_client(socket: &UdpSocket, setup: &str) -> ProcessGroupGuard {
     let command = format!(
         "{setup}\nexec env TERM=xterm-256color LANG=C.UTF-8 MOSH_KEY={STOCK_1_4_0_KEY_TEXT} mosh-client 127.0.0.1 {}",
@@ -148,6 +277,14 @@ fn receive_stock_instruction(
     socket: &UdpSocket,
     receiver: &mut PacketReceiver,
 ) -> TransportInstruction {
+    receive_stock_instruction_with_peer(socket, receiver).0
+}
+
+#[cfg(target_os = "linux")]
+fn receive_stock_instruction_with_peer(
+    socket: &UdpSocket,
+    receiver: &mut PacketReceiver,
+) -> (TransportInstruction, std::net::SocketAddr) {
     let mut datagram = [0_u8; MAX_DATAGRAM_BYTES];
     let (length, peer) = socket
         .recv_from(&mut datagram)
@@ -160,8 +297,9 @@ fn receive_stock_instruction(
         .unwrap_or_else(|error| panic!("stock client fragment was rejected: {error:?}"));
     assert_eq!(decoded_fragment.number, 0);
     assert!(decoded_fragment.is_final);
-    TransportInstruction::decode_zlib(decoded_fragment.body)
-        .unwrap_or_else(|error| panic!("stock client instruction was rejected: {error:?}"))
+    let instruction = TransportInstruction::decode_zlib(decoded_fragment.body)
+        .unwrap_or_else(|error| panic!("stock client instruction was rejected: {error:?}"));
+    (instruction, peer)
 }
 
 #[cfg(target_os = "linux")]
@@ -181,6 +319,18 @@ impl ProcessGroupGuard {
 
     fn stdin_mut(&mut self) -> &mut std::process::ChildStdin {
         self.child.stdin.as_mut().expect("fixture stdin is open")
+    }
+
+    fn wait_for_exit(&mut self, timeout: Duration) -> bool {
+        let deadline = std::time::Instant::now() + timeout;
+        while std::time::Instant::now() < deadline {
+            if self.child.try_wait().is_ok_and(|status| status.is_some()) {
+                self.terminated = true;
+                return true;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        false
     }
 
     fn terminate(&mut self) -> bool {

@@ -247,6 +247,27 @@ single-incomplete-message, expiry, duplicate, and conflict choices are this
 project's security and recovery policy, not claims about stock implementation
 internals.
 
+## Authenticated close exchange
+
+Project-controlled black-box fixtures against stock 1.4.0 establish one
+reserved terminal transition for clean shutdown:
+
+- the initiator uses `new_state = u64::MAX`;
+- `base_state`, `discard_before_state`, and `state_difference` retain their
+  ordinary meanings, so the close can carry all changes after the receiver's
+  known base;
+- the receiver acknowledges shutdown with `acknowledged_state = u64::MAX` in a
+  newly allocated ordinary local state; and
+- an initiator retransmits while waiting and stops after an approximately
+  four-second bounded acknowledgement window.
+
+Authentication, expected peer source, replay rejection, fragment completion,
+bounded decompression, and instruction decoding all precede close recognition.
+The reserved target never enters ordinary synchronization numbering or
+retention. A received final difference is applied from its retained ordinary
+base before the Session reports clean remote completion. Ordinary network
+silence is not a close signal.
+
 ## Open wire questions
 
 The following questions remain outside the implementation contract until a

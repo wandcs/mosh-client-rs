@@ -138,12 +138,18 @@ platform policy, cancel the integration rather than add workarounds.
 
 ## Re-entry conditions for this library
 
+The first re-entry occurred on 2026-08-30 after LeanTTY reproduced local server
+leakage and an unfinished remote logout. ADR 0008 and the stock 1.4.0 close
+fixtures close that bounded lifecycle defect with additive graceful close while
+preserving hard cancellation. This does not satisfy or weaken the separate
+physical reachability and temporary-socket-error evidence gates below.
+
 Do not extend the library from the remaining LeanTTY plan alone. Reopen core
 development only when one of these conditions supplies concrete evidence:
 
 1. physical LeanTTY testing reproduces a protocol or public API defect;
 2. an observed HarmonyOS socket error needs a narrow, bounded recovery rule;
-3. stock-server evidence justifies a reachability or remote-exit contract;
+3. stock-server and physical evidence justify a reachability contract;
 4. a dependency security or maintenance event requires action; or
 5. the maintainer starts a publication review with a nonzero version, immutable
    tag, and complete package metadata.

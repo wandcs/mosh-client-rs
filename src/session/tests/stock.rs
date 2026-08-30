@@ -55,6 +55,87 @@ fn stock_1_4_0_public_session_drives_an_interactive_shell() {
     assert!(server.terminate(), "stock server fixture did not clean up");
 }
 
+#[test]
+#[ignore = "requires a locally installed stock mosh-server 1.4.0"]
+fn stock_1_4_0_public_session_gracefully_closes_the_server() {
+    assert_stock_1_4_0("mosh-server");
+    let (bootstrap, mut server) = start_stock_server("60580:60599");
+
+    let runtime = stock_runtime();
+    runtime.block_on(async {
+        let (mut session, session_task) = Session::connect(bootstrap, 80, 24)
+            .await
+            .expect("public Session setup failed");
+        let task = tokio::spawn(session_task.run());
+        let mut projection = vt100::Parser::new(24, 80, 0);
+
+        wait_for_public_screen(&mut session, &mut projection, "MOSH_SESSION> ").await;
+        session.close();
+        session.close();
+        assert_eq!(
+            session.send_input(b"too late".to_vec()).await,
+            Err(SessionCommandError::Closed)
+        );
+        let exit = tokio::time::timeout(Duration::from_secs(3), task)
+            .await
+            .expect("gracefully closed public stock Session did not stop")
+            .unwrap()
+            .expect("public stock Session failed");
+        assert_eq!(exit, SessionExit::LocalClosed);
+    });
+
+    for _ in 0..100 {
+        if server.has_exited() {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    assert!(
+        server.has_exited(),
+        "graceful close left stock server running"
+    );
+    assert!(server.terminate(), "stock server fixture did not clean up");
+}
+
+#[test]
+#[ignore = "requires a locally installed stock mosh-server 1.4.0"]
+fn stock_1_4_0_public_session_reports_remote_close_and_drains_final_output() {
+    assert_stock_1_4_0("mosh-server");
+    let (bootstrap, mut server) = start_stock_server("60660:60679");
+
+    let runtime = stock_runtime();
+    runtime.block_on(async {
+        let (mut session, session_task) = Session::connect(bootstrap, 80, 24)
+            .await
+            .expect("public Session setup failed");
+        let task = tokio::spawn(session_task.run());
+        let mut projection = vt100::Parser::new(24, 80, 0);
+
+        wait_for_public_screen(&mut session, &mut projection, "MOSH_SESSION> ").await;
+        session
+            .send_input(b"printf 'REMOTE_FINAL_OK\\n'; exit\n".to_vec())
+            .await
+            .expect("Session command queue closed before remote exit");
+        let output = tokio::spawn(async move {
+            while let Some(paint) = session.next_output().await {
+                projection.process(&paint);
+            }
+            projection.screen().contents()
+        });
+
+        let exit = tokio::time::timeout(Duration::from_secs(5), task)
+            .await
+            .expect("remote stock exit did not stop the public Session")
+            .unwrap()
+            .expect("public stock Session failed");
+        assert_eq!(exit, SessionExit::RemoteClosed);
+        let final_screen = output.await.unwrap();
+        assert!(final_screen.contains("REMOTE_FINAL_OK"));
+    });
+
+    assert!(server.terminate(), "stock server fixture did not clean up");
+}
+
 async fn wait_for_public_screen(
     session: &mut Session,
     projection: &mut vt100::Parser,
@@ -447,6 +528,7 @@ async fn start_private_session_with_prediction(
         commands,
         output,
         cancellation,
+        graceful_close: _graceful_close,
         ..
     } = channels;
     let task = tokio::spawn(async move {

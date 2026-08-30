@@ -434,3 +434,29 @@ Author:
   projection on delayed loopback. It does not prove LeanTTY rendering, a
   physical network, jitter, loss, Unicode, backspace, paste, or editor
   prediction.
+
+### Stock authenticated graceful close
+
+- Date: 2026-08-30
+- Behavior: a stock client initiated clean shutdown with reserved target state
+  `u64::MAX`, an ordinary retained base and difference, then waited for an
+  acknowledgement for approximately four seconds. When sent an authenticated
+  server close with that target, it replied from a newly allocated ordinary
+  local state with `acknowledged_state = u64::MAX`.
+- Evidence class: project-controlled black-box interoperability fixtures.
+- Source: [stock graceful-close fixture](fixtures/stock-1.4.0-graceful-close.md),
+  `stock_1_4_0_client_graceful_close_has_a_reserved_state_shape`,
+  `stock_1_4_0_client_acknowledges_a_server_graceful_close`, and
+  `stock_1_4_0_client_graceful_close_has_a_bounded_ack_wait`.
+- Observed version: unmodified Ubuntu `mosh-client` and `mosh-server` 1.4.0 on
+  Ubuntu 26.04 WSL x86-64, IPv4 loopback, `TERM=xterm-256color`, and
+  `LANG=C.UTF-8`.
+- Implementation consequence: keep the reserved close target out of ordinary
+  SSP state and terminal snapshot retention; carry the current bounded client
+  difference when initiating; apply a peer's final difference before
+  completion; reply with a new ordinary state acknowledging `u64::MAX`; and
+  bound a local graceful-close wait to four monotonic seconds.
+- Limits: these observations establish the authenticated field shapes and a
+  local bounded wait. They do not make silence a close signal, prove peer
+  receipt after timeout, classify local UDP errors, or add public reachability
+  state.

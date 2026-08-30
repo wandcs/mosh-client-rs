@@ -18,6 +18,14 @@ fn initial_instruction_matches_the_observed_field_shape() {
 }
 
 #[test]
+fn only_the_reserved_target_is_a_shutdown_instruction() {
+    let mut instruction = TransportInstruction::initial(80, 24, vec![0]).unwrap();
+    assert!(!instruction.is_shutdown());
+    instruction.new_state = SHUTDOWN_STATE;
+    assert!(instruction.is_shutdown());
+}
+
+#[test]
 fn client_input_and_resize_preserve_the_verified_operation_order() {
     let difference = encode_client_difference(&[
         ClientOperation::Input("x中".as_bytes().to_vec()),

@@ -8,8 +8,10 @@
 > [0002](decisions/0002-runtime-and-terminal-output.md),
 > [0003](decisions/0003-independent-wire-and-foundations.md),
 > [0004](decisions/0004-rustcrypto-ocb3-security-exception.md),
-> [0005](decisions/0005-bounded-local-prediction.md), and
-> [0006](decisions/0006-phase-2-core-viability-gate.md)
+> [0005](decisions/0005-bounded-local-prediction.md),
+> [0006](decisions/0006-phase-2-core-viability-gate.md),
+> [0007](decisions/0007-public-session-api.md), and
+> [0008](decisions/0008-authenticated-graceful-close.md)
 
 The [Phase 3 mechanism necessity review](necessity-review.md) records which
 implemented mechanisms the stabilized library keeps and which behavior remains
@@ -44,7 +46,7 @@ Embedding application
   ├─ executor
   ├─ terminal surface
   └─ one application Session owner
-       │ commands: input, resize, repaint, cancel
+       │ commands: input, resize, repaint, close, cancel
        │ events: state, output bytes, close
        ▼
 Mosh Session driver
@@ -87,15 +89,19 @@ not create a global runtime or one operating-system thread per Session.
 The production driver owns UDP reads and writes, timers, retransmission,
 heartbeat, client roaming continuity, and output generation. The public
 `Session` handle sends bounded commands, receives bounded VT output, observes
-lifecycle state, and requests cancellation. Dropping the handle or cancelling
-the task closes the socket, stops timers, clears queues, and releases session
-secrets.
+lifecycle state, and requests graceful close or hard cancellation. Dropping the
+handle or cancelling the task closes the socket, stops timers, clears queues,
+and releases session secrets.
 
 `Session::connect` returns the handle and a `SessionTask`. The caller polls
 `SessionTask::run` on its own Tokio executor. One future polls cancellation and
 commands, due protocol work, output capacity, and UDP input. Cancellation has
 its own idempotent signal outside the command queue, so queued input or a full
-output slot cannot delay it.
+output slot cannot delay it. Graceful close has a separate Session-owned
+lifecycle signal. Commands linearized before close are drained in order; later
+commands are rejected. The driver then retransmits a reserved, authenticated
+close target for at most four seconds. That target and its ACK remain outside
+ordinary synchronization retention and public lifecycle state.
 
 The protocol core remains deterministic. Tests provide datagrams, commands,
 monotonic time, and simulated network events, then inspect state transitions and
@@ -147,9 +153,11 @@ heartbeat deadlines share one wake decision. If time jumps forward, every
 expired reason is folded into that one send; missed periodic ticks are not
 replayed.
 
-Cancellation is owned once by the Session driver. Dropping or cancelling the
-driver discards its timer state and any uncommitted plans; individual timing
-helpers do not maintain parallel cancellation flags.
+Cancellation and graceful close are owned once by the Session driver. Dropping
+or cancelling the driver discards timer state and any uncommitted plans;
+individual timing helpers do not maintain parallel lifecycle flags. The close
+deadline is a bounded terminal phase, not evidence that ordinary network
+silence means disconnection.
 
 RTT estimation is integer-only. Authenticated, in-sequence timestamp replies
 feed TCP-style SRTT and RTTVAR equations with Mosh's 50 ms RTO floor. Until the
@@ -342,7 +350,8 @@ PaneRuntime
       └─ TerminalBridge → xterm.js
 ```
 
-The adapter sends input, resize, repaint, and cancellation commands. It maps
+The adapter sends input, resize, repaint, graceful-close, and cancellation
+commands. It maps
 native events to the owning Pane with a Session identifier and lifecycle
 generation. Pane close cancels the Session. Surface detach keeps the Session
 alive. Surface attach requests a full repaint. Page destruction cancels all
@@ -436,8 +445,6 @@ exist to fuzz.
 The initial design defers:
 
 - prediction beyond the measured single-byte printable ASCII epoch;
-- recognition of remote clean exit until its authenticated stock wire signal is
-  independently observed;
 - recovery from selected local UDP send errors until platform evidence defines
   which errors are temporary and how retries remain paced;
 - public reachability or disconnected state;

@@ -28,6 +28,21 @@ fn apply(state: &mut SynchronizationState, instruction: &TransportInstruction) -
 }
 
 #[test]
+fn shutdown_target_never_enters_ordinary_remote_history() {
+    let mut state = SynchronizationState::new();
+    let mut shutdown = instruction(0, crate::instruction::SHUTDOWN_STATE, 0, 0);
+    shutdown.state_difference = b"final".to_vec();
+
+    let transition = state.begin_shutdown_receive(&shutdown).unwrap();
+    assert_eq!(transition.base_state, 0);
+    assert_eq!(transition.difference, b"final");
+    assert_eq!(state.remote_latest(), 0);
+
+    apply(&mut state, &instruction(0, 1, 0, 0));
+    assert_eq!(state.remote_latest(), 1);
+}
+
+#[test]
 fn initial_change_is_sent_from_zero_and_acknowledged() {
     let mut state = SynchronizationState::new();
     assert_eq!(state.advance_local().unwrap(), 1);

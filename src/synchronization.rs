@@ -1,7 +1,7 @@
 use core::fmt;
 use std::collections::VecDeque;
 
-use crate::instruction::{PROTOCOL_VERSION, TransportInstruction};
+use crate::instruction::{PROTOCOL_VERSION, SHUTDOWN_STATE, TransportInstruction};
 use crate::limits::{
     MAX_RECEIVED_REFERENCE_STATES, MAX_RETRANSMISSION_TIMEOUT_MS, MAX_SENT_STATES_AFTER_ACK,
     MIN_RETRANSMISSION_TIMEOUT_MS,
@@ -98,6 +98,12 @@ pub(crate) enum RemoteStateDisposition<'a> {
 pub(crate) struct ReceiveTransition<'a> {
     pub(crate) acknowledgement: AcknowledgementDisposition,
     pub(crate) remote_state: RemoteStateDisposition<'a>,
+}
+
+#[derive(Debug)]
+pub(crate) struct ShutdownTransition<'a> {
+    pub(crate) base_state: u64,
+    pub(crate) difference: &'a [u8],
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -281,6 +287,26 @@ impl SynchronizationState {
         Ok(ReceiveTransition {
             acknowledgement,
             remote_state,
+        })
+    }
+
+    pub(crate) fn begin_shutdown_receive<'a>(
+        &mut self,
+        instruction: &'a TransportInstruction,
+    ) -> Result<ShutdownTransition<'a>, SynchronizationError> {
+        if instruction.protocol_version != PROTOCOL_VERSION
+            || instruction.new_state != SHUTDOWN_STATE
+            || instruction.acknowledged_state > self.local_latest
+            || instruction.discard_before_state > instruction.base_state
+            || instruction.base_state < self.remote_throwaway_floor
+            || !self.received_states.contains(&instruction.base_state)
+        {
+            return Err(SynchronizationError::InvalidStateTransition);
+        }
+        self.observe_acknowledgement(instruction.acknowledged_state)?;
+        Ok(ShutdownTransition {
+            base_state: instruction.base_state,
+            difference: &instruction.state_difference,
         })
     }
 

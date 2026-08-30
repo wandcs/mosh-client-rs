@@ -35,8 +35,9 @@ must not require broader production visibility.
 
 Reserve the crate-level `tests/` directory for tests that exercise public
 contracts and for reusable test support. `tests/session.rs` now verifies
-initial validation, command validation, lifecycle state, owner shutdown, and
-idempotent cancellation through exported types only. One stock interactive
+initial validation, command validation, lifecycle state, owner shutdown,
+idempotent graceful close, and idempotent cancellation through exported types
+only. One stock interactive
 scenario also drives the public API while remaining beside the existing shared
 stock-process fixture code. Move more process fixtures only when that creates a
 clear reusable test-support boundary. Choose test boundaries by ownership and
@@ -74,7 +75,7 @@ ownership without removing duplication. The
 | Terminal correctness | Unicode, width, combining, cursor, color, resize, alternate screen, sustained I/O and independent renderer comparison |
 | Bounded local prediction | Deterministic confirmed/diverged predictions, epoch reset, control and paste rejection, limits, delayed confirmation, stock echo-ACK mapping and comparative latency |
 | Small portable library | Linux host build, ARM64 HarmonyOS build, dependency audit and no remote runtime service |
-| Session isolation | Two concurrent Sessions with distinct keys, sockets, timers, terminal states, events and cancellation |
+| Session isolation | Two concurrent Sessions with distinct keys, sockets, timers, terminal states, events, graceful close and cancellation |
 | LeanTTY value | Side-by-side SSH/Mosh scenarios under normal, interrupted, roaming, lock, sleep, UDP block and recovery conditions |
 
 ## Local deterministic tests
@@ -271,11 +272,12 @@ After completion, no socket, timer, callback, queue item or secret may remain
 owned by the Session.
 
 The first public-contract suite proves `Connecting` and `Closed`, cancellation
-outside the command queue, invalid command rejection before queueing, output
-closure, and `OwnerDropped`. Public stock fixtures additionally prove
-`Connecting` to `Active`, input, ordered VT output, full repaint, `Cancelled`,
-and two-Session lifecycle isolation against stock 1.4.0. Cancellation at every
-remaining awaited boundary is still required before publication.
+outside the command queue, graceful-close command rejection and four-second
+bound, invalid command rejection before queueing, output closure, and
+`OwnerDropped`. Public stock fixtures additionally prove `Connecting` to
+`Active`, input, ordered VT output, full repaint, `LocalClosed`,
+`RemoteClosed`, `Cancelled`, and two-Session lifecycle isolation against stock
+1.4.0.
 
 The Phase 3A isolation fixture starts two public Sessions through distinct
 loopback relays. It injects Session A ciphertext from Session B's expected relay
@@ -283,17 +285,24 @@ endpoint, interleaves unique input, uses different PTY sizes, and rebuilds both
 projections through full repaint. It then cancels A, verifies that A's output is
 closed and rejects a late packet, waits for B's independent heartbeat, and
 proves B still accepts input. A replacement Session rejects the old A packet;
-dropping B produces `OwnerDropped` while the replacement keeps running. This
-provides indirect public-contract evidence for distinct keys and direct
-evidence for isolated endpoints, packets, input, VT output, terminal state,
-timers, errors, cancellation, cleanup, and replacement lifecycles.
+gracefully closing B produces `LocalClosed` while the replacement keeps
+running, and dropping the replacement produces `OwnerDropped`. This provides
+indirect public-contract evidence for distinct keys and direct evidence for
+isolated endpoints, packets, input, VT output, terminal state, timers, errors,
+graceful close, cancellation, cleanup, and replacement lifecycles.
 
 The current fixtures also cover bounded command and output channels,
 cancellation without a server, a stock 1.4.0 interactive shell, remote PTY
 resize, tmux attach and reattach, a Vim full-screen edit and repaint, 128
 ordered input commands, and 1,200 lines of output while the one-slot display
 queue is full. Loopback relays cover a bounded outage, UDP source-port change,
-server disappearance, and late authenticated ciphertext. They do not prove a
+server disappearance, late authenticated ciphertext, and one Session closing
+without affecting another. A local fake peer drops close requests before a
+later authenticated acknowledgement to prove bounded retransmission. Stock
+client and server fixtures prove the reserved close target in both directions,
+the no-ACK window, final-output drain, and server process cleanup. A graceful
+owner keeps consuming output until task completion; hard cancellation remains
+the escape path when presentation is abandoned. These tests do not prove a
 long outage, physical address change, every cancellation boundary, HarmonyOS
 behavior, or LeanTTY lifecycle integration.
 

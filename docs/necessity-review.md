@@ -275,6 +275,12 @@ change, and reachability indication remain later evidence gates.
 
 ## Public event surface — keep; defer remote clean exit
 
+> Superseded on 2026-08-30 for clean close only: LeanTTY reproduced the missing
+> lifecycle behavior, and project-controlled stock 1.4.0 fixtures established
+> the authenticated reserved target, acknowledgement, and bounded wait. ADR
+> 0008 admits additive graceful close and `SessionExit` outcomes. Reachability
+> events and temporary UDP-send recovery remain deferred.
+
 **User value and evidence.** The small public API separates three delivery
 semantics: ordered bounded commands and VT output, coalesced latest lifecycle
 state, and a final task result. `Active` means an authenticated terminal state
@@ -298,7 +304,9 @@ crate.
 semantics from ADR 0007. Defer a remote-close decoder, `SessionExit` variant,
 and any public reachability state until a controlled stock 1.4.0 fixture
 captures the authenticated behavior and the rule is recorded in provenance.
-Until then, server silence leaves the Session repaintable and cancellable.
+Until that evidence was collected, server silence left the Session repaintable
+and cancellable. It still does: only the authenticated close exchange changes
+the lifecycle outcome.
 
 ## Phase 3D constraints
 

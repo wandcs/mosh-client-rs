@@ -104,3 +104,16 @@ The post-fix gate passed on 2026-08-30:
 - `cargo package`: assembled 86 files and rebuilt the crate from the package.
   Its missing release-metadata warning is the publication blocker recorded
   above, not a build failure.
+
+### Post-integration lifecycle re-entry
+
+ADR 0008 reopened one bounded API and wire-lifecycle defect after LeanTTY
+integration. The 2026-08-30 post-fix gate passed on both the default toolchain
+and Rust 1.85: formatting, strict Clippy, rustdoc, and the complete ordinary
+suite passed with 109 tests and 21 environment tests ignored. Root `cargo deny`
+and `cargo audit` remained clean. Five new close-specific stock 1.4.0 fixtures
+and the updated public two-Session isolation fixture passed locally, covering
+both close directions, bounded no-ACK behavior, final output, server cleanup,
+and isolation. The earlier ARM64 OHOS coexistence result is not reclassified as
+device lifecycle evidence; LeanTTY must rebuild and run the updated dependency
+in its remaining Phase 4 acceptance.

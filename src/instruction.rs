@@ -12,6 +12,7 @@ use crate::limits::{
 };
 
 pub(crate) const PROTOCOL_VERSION: u32 = 2;
+pub(crate) const SHUTDOWN_STATE: u64 = u64::MAX;
 const ZLIB_LEVEL: u8 = 6;
 const DECOMPRESSION_CHUNK_BYTES: usize = 16 * 1024;
 
@@ -82,6 +83,10 @@ struct TerminalSize {
 }
 
 impl TransportInstruction {
+    pub(crate) const fn is_shutdown(&self) -> bool {
+        self.new_state == SHUTDOWN_STATE
+    }
+
     pub(crate) fn initial(
         columns: u32,
         rows: u32,
