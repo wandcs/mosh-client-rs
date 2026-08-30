@@ -35,6 +35,21 @@ After measurement, each Session sends a control input and a marker command.
 The fixture waits for `LATENCY_AUTHORITY_CONVERGED`, then cancels the Session
 and terminates the detached stock server.
 
+`stock_1_4_0_public_prediction_survives_total_udp_loss_after_confirmation`
+starts concurrent public `Always` and `Never` Sessions through independent
+40 ms one-way relays. It uses the stock PTY's normal kernel echo and accepts an
+epoch as confirmed only after public VT output makes one warmup byte visible in
+less than the one-way relay delay. It then lets authority settle, pauses both
+relay directions, drains packets already in flight, and submits one printable
+byte to each Session.
+
+In the recorded 2026-08-31 run, the fourth `Always` warmup byte proved the hot
+epoch with 0 ms visible latency. During complete UDP loss, the next `Always`
+byte was also visible in 0 ms before the relay delivered it to the server;
+`Never` emitted no VT output before recovery. Each relay dropped two datagrams.
+After relay recovery, both Sessions reached distinct stock-authoritative marker
+screens and completed independent cancellation.
+
 ## Established behavior
 
 - Stock echo acknowledgement identifies the controlled client state.
@@ -46,11 +61,19 @@ and terminates the detached stock server.
 - Conservative prediction leaves the first three delayed samples authoritative
   in this run, then removes network delay from the visible hot epoch.
 - Predicted input still reaches and converges with the stock server.
+- A confirmed `Always` epoch continues to produce public VT output while both
+  UDP directions are completely blocked. `Never` remains authoritative-only.
+- The outage assertion runs after relay in-flight traffic is drained and proves
+  from relay counters that the predicted byte had not reached the stock server.
+- Concurrent `Always` and `Never` Sessions retain separate prediction, packets,
+  terminal state, output, convergence, and lifecycle.
 
 ## Limits
 
 The result measures the Rust Session and VT projection on loopback. It
 does not include LeanTTY, N-API, ArkTS, WebView rendering, a physical device,
 real WAN jitter, loss, reordering, Unicode prediction, paste, backspace, or
-interactive editor prediction. Timing samples are evidence for the relative
-gate, not a universal performance guarantee.
+interactive editor prediction. The full-loss scenario uses normal stock PTY
+kernel echo; it does not validate a `stty -echo` user-space echo fixture or
+prove that such a fixture established an echo-confirmed epoch. Timing samples
+are evidence for the relative gate, not a universal performance guarantee.
