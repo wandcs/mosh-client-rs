@@ -49,8 +49,10 @@ pub(crate) struct SessionCrypto(MoshOcb3);
 
 impl SessionCrypto {
     pub(crate) fn new(key: &SessionKey) -> Self {
-        let key = (*key.as_bytes()).into();
-        Self(MoshOcb3::new(&key))
+        Self(
+            MoshOcb3::new_from_slice(key.as_bytes())
+                .expect("the fixed-size SessionKey matches AES-128"),
+        )
     }
 
     pub(crate) fn seal(

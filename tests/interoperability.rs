@@ -7,6 +7,7 @@ use std::thread;
 use std::time::Duration;
 
 use mosh_client::Bootstrap;
+use zeroize::Zeroize as _;
 
 const STOCK_VERSION: &[u8] = b"mosh 1.4.0";
 
@@ -29,7 +30,7 @@ fn stock_1_4_0_bootstrap_output_matches_the_parser() {
         "--",
         "/bin/true",
     ]);
-    let output = run(&mut command);
+    let mut output = run(&mut command);
     let detached_pid = find_detached_pid(&output)
         .unwrap_or_else(|| panic!("stock server did not report its detached process identifier"));
     let mut server = ServerGuard::new(detached_pid);
@@ -39,6 +40,8 @@ fn stock_1_4_0_bootstrap_output_matches_the_parser() {
         .unwrap_or_else(|error| panic!("stock bootstrap output was rejected: {error}"));
     assert!((60060..=60069).contains(&bootstrap.server_addr().port()));
     drop(bootstrap);
+    output.stdout.zeroize();
+    output.stderr.zeroize();
 
     assert!(server.terminate(), "stock server fixture did not clean up");
 }

@@ -26,10 +26,11 @@ still converges to a stock-server marker.
 The Phase 2 viability gate found no material terminal-correctness or recovery
 deficit within the declared local compatibility scope. Public contract tests
 cover validation, owner shutdown, state, and idempotent cancellation; a stock
-1.4.0 interactive fixture now drives the same public API. Dependency,
-physical-network, and LeanTTY gates remain open. The crate
-stays unpublished until the later interoperability and security gates in
-[the roadmap](docs/roadmap.md) pass.
+1.4.0 interactive fixture now drives the same public API. The Phase 3F security
+and packaging review keeps the crate unpublished until the maintainer chooses
+a release version, public repository, and package metadata. Physical-network
+and LeanTTY gates remain open. See [the roadmap](docs/roadmap.md) and
+[the security and publication review](docs/security-publication-review.md).
 
 ## Library shape
 

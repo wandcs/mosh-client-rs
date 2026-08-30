@@ -202,10 +202,17 @@ and the Phase 4 and 3F gates without changing production behavior or public API.
 
 ### Phase 3F: Close security and publication gates
 
-- [ ] Audit dependency licenses, supply chain, `unsafe` code, and secret handling.
-- [ ] Re-run the complete verification suite, relevant stock fixtures, and the
+Phase 3F is complete as of 2026-08-30. The
+[security and publication review](security-publication-review.md) records the
+resolved dependency and `unsafe` boundaries, two secret-lifetime fixes, the
+complete verification evidence, the accepted OCB3 residual risk, and the
+decision to keep publication disabled until release identity and package
+metadata are chosen.
+
+- [x] Audit dependency licenses, supply chain, `unsafe` code, and secret handling.
+- [x] Re-run the complete verification suite, relevant stock fixtures, and the
   two-session isolation scenarios after the accepted refactors and audit fixes.
-- [ ] Decide whether the crate is ready to publish; keep `publish = false` until
+- [x] Decide whether the crate is ready to publish; keep `publish = false` until
   the decision is recorded.
 
 ## Phase 4: Integrate one LeanTTY vertical slice

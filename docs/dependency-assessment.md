@@ -1,6 +1,6 @@
 # Dependency assessment
 
-> Assessment date: 2026-08-29
+> Assessment date: 2026-08-30
 >
 > Status: foundation and Session runtime dependencies adopted; the OCB3 exception is accepted in
 > [ADR 0004](decisions/0004-rustcrypto-ocb3-security-exception.md). The
@@ -11,6 +11,11 @@
 The project reuses narrow foundations and owns Mosh behavior. Version numbers
 below identify the assessed baseline; `Cargo.lock` will record the adopted
 versions.
+
+Phase 3F re-audited the complete resolved graph, `unsafe` boundaries, sources,
+checksums, licenses, advisories, and package assembly. See the
+[security and publication review](security-publication-review.md) for the final
+evidence and the decision to keep publication disabled.
 
 ## Production candidates
 
