@@ -11,16 +11,18 @@ The implementation and security gate is closed. The crate is not ready for a
 crates.io release, so `publish = false` remains.
 
 This is a packaging and release-identity decision, not a rejection of the
-client core. `cargo package` rebuilds the crate, but reports that the manifest
-has no documentation, homepage, or repository URL. The checkout has no Git
-remote, and version `0.0.0` remains a development placeholder. Inventing a
-public repository or release version would exceed this review.
+client core. The original review found no public source or repository metadata.
+The maintainer created
+[`wandcs/mosh-client-rs`](https://github.com/wandcs/mosh-client-rs) later on
+2026-08-30, and the manifest now records that source. Version `0.0.0` remains a
+development placeholder, no immutable release tag exists, and publication stays
+disabled.
 
-Reconsider publication after the maintainer chooses the repository, release
-version, and release metadata. Add those values, review the packaged file list,
-and repeat every Phase 3F gate before removing `publish = false`. Phase 4
-LeanTTY integration is separate and does not silently expand this crate's
-compatibility claim.
+Reconsider publication after the maintainer chooses a release version, tag, and
+remaining package metadata. Add those values, review the packaged file list, and
+repeat every Phase 3F gate before removing `publish = false`. Phase 4 LeanTTY
+integration is separate and does not silently expand this crate's compatibility
+claim.
 
 ## Dependency and supply-chain audit
 

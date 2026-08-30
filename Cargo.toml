@@ -6,6 +6,7 @@ rust-version = "1.85"
 license = "MIT OR Apache-2.0"
 description = "An independent, unofficial, wire-compatible Mosh client implementation in Rust"
 readme = "README.md"
+repository = "https://github.com/wandcs/mosh-client-rs"
 keywords = ["mosh", "terminal", "udp", "roaming"]
 categories = ["network-programming"]
 publish = false

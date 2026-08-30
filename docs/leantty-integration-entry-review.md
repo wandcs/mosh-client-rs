@@ -145,8 +145,8 @@ development only when one of these conditions supplies concrete evidence:
 2. an observed HarmonyOS socket error needs a narrow, bounded recovery rule;
 3. stock-server evidence justifies a reachability or remote-exit contract;
 4. a dependency security or maintenance event requires action; or
-5. the maintainer starts a publication review with a repository, nonzero
-   version, immutable tag, and package metadata.
+5. the maintainer starts a publication review with a nonzero version, immutable
+   tag, and complete package metadata.
 
 Until the publication condition is met, `0.0.0` and `publish = false` remain.
 The local path dependency is suitable for development evidence, not a LeanTTY
