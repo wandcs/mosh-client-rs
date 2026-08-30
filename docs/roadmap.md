@@ -249,6 +249,18 @@ admits one bounded library follow-up:
 - [x] Prove thresholds, invalid-traffic isolation, recovery, server silence,
   output independence, and stock-server interoperability.
 
+LeanTTY then reproduced MCRS-006: the fixed private predictor made the standard
+`adaptive`, `always`, and `never` choices unrepresentable through the public
+Session API. [ADR 0010](decisions/0010-public-prediction-modes.md) admits one
+bounded library follow-up:
+
+- [x] Add the exact three-value per-Session mode and make `Adaptive` the
+  standard `Session::connect` default without adding global or runtime policy.
+- [x] Keep the existing confirmed-epoch ASCII predictor and implement only a
+  thin RTT/glitch display gate with recorded bounds.
+- [x] Prove default selection, all modes, concurrent isolation, adaptive
+  thresholds, resource bounds, and stock-server convergence.
+
 - [x] Keep LeanTTY responsible for Host resolution, host verification,
   authentication, and controlled server startup.
 - [ ] Connect one Pane-owned Mosh Session to one Terminal Surface without a

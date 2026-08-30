@@ -86,12 +86,16 @@ error occurs. A graceful close reserves no ordinary SSP history entry for
 | Prediction age | 10 s from the oldest pending scalar | Clear projection and repaint from authority |
 | Prediction divergence | One mismatch | Clear projection and end the epoch immediately |
 | Prediction screen snapshots | One base, one projection, one last-painted snapshot | Replace or clear; never retain one screen per scalar |
+| Adaptive slow-link display | Enable above 30 ms frame interval; disable at or below 20 ms | Retain the current choice in between and never retract a visible projection |
+| Adaptive glitch display | 250 ms pending eligible projection | Temporarily display that projection; confirmation still comes only from the server |
 
 The surface may keep local scrollback. It cannot make that history
 authoritative or force the Session to retain old terminal states.
 
 Prediction never mutates authoritative terminal state. Its age limit clears
-stale display state; it does not classify an echo as correct or incorrect.
+stale display state; it does not classify an echo as correct or incorrect. The
+adaptive thresholds are internal display policy, not additional wire timers or
+publicly configurable limits.
 
 ## Timers
 

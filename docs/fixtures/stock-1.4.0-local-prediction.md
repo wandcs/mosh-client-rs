@@ -13,18 +13,23 @@ independently encoded initial resize as client state 1, then one printable byte
 as client state 2. Authenticated stock output contains transport
 acknowledgement 2 and terminal echo acknowledgement 2.
 
-`stock_1_4_0_prediction_reduces_measured_interactive_echo_latency` starts
-separate stock servers and Sessions for the non-predictive baseline and the
-predictive path. A test-only UDP relay applies a fixed delay in both directions.
-The fixture sends `latencyprobe` one byte at a time and measures from Session
-input submission until each character is visible in an independent VT
-projection.
+`stock_1_4_0_prediction_modes_preserve_convergence_and_adapt_to_latency`
+starts separate stock servers and Sessions for `Never`, `Always`, and
+`Adaptive`. A test-only UDP relay applies a fixed delay in both directions. The
+fixture sends `latencyprobe` one byte at a time and measures from Session input
+submission until each character is visible in an independent VT projection.
 
-| One-way delay | Baseline samples, ms | Prediction samples, ms |
-| ---: | --- | --- |
-| 0 ms | 28, 27, 23, 26, 27, 23, 26, 27, 22, 27, 28, 23 | 27, 28, 21, 27, 27, 21, 27, 27, 23, 26, 27, 22 |
-| 40 ms | 109, 107, 109, 107, 107, 108, 108, 109, 108, 108, 110, 108 | 109, 109, 108, 0, 0, 0, 0, 0, 0, 0, 0, 0 |
-| 80 ms | 189, 187, 255, 189, 252, 188, 253, 188, 252, 189, 251, 188 | 189, 190, 249, 0, 0, 0, 0, 0, 0, 0, 0, 0 |
+| One-way delay | Mode | Samples, ms | Median |
+| ---: | --- | --- | ---: |
+| 0 ms | `Never` | 28, 28, 21, 27, 27, 21, 26, 28, 22, 27, 28, 20 | 27 ms |
+| 0 ms | `Always` | 29, 28, 22, 27, 28, 22, 27, 26, 24, 26, 24, 26 | 26 ms |
+| 0 ms | `Adaptive` | 29, 27, 21, 26, 28, 22, 27, 27, 23, 27, 25, 24 | 27 ms |
+| 40 ms | `Never` | 108, 108, 109, 108, 107, 108, 108, 107, 107, 109, 108, 108 | 108 ms |
+| 40 ms | `Always` | 108, 108, 108, 0, 0, 0, 0, 0, 0, 0, 0, 0 | 0 ms |
+| 40 ms | `Adaptive` | 108, 108, 107, 0, 0, 0, 0, 0, 0, 0, 0, 0 | 0 ms |
+| 80 ms | `Never` | 188, 187, 251, 190, 249, 188, 250, 188, 250, 189, 250, 187 | 190 ms |
+| 80 ms | `Always` | 187, 189, 252, 0, 0, 0, 0, 0, 0, 0, 0, 0 | 0 ms |
+| 80 ms | `Adaptive` | 189, 188, 252, 0, 0, 0, 0, 0, 0, 0, 0, 0 | 0 ms |
 
 After measurement, each Session sends a control input and a marker command.
 The fixture waits for `LATENCY_AUTHORITY_CONVERGED`, then cancels the Session
@@ -33,15 +38,18 @@ and terminates the detached stock server.
 ## Established behavior
 
 - Stock echo acknowledgement identifies the controlled client state.
-- The relay affects both directions; every non-predictive sample is at least
+- The relay affects both directions; every `Never` sample is at least
   the configured round-trip delay.
+- `Adaptive` remains authoritative on the low-delay link and activates on both
+  delayed links. `Always` uses the same confirmed-epoch safety gate without the
+  link-delay display gate.
 - Conservative prediction leaves the first three delayed samples authoritative
-  in this run, then removes the network delay from the visible hot epoch.
+  in this run, then removes network delay from the visible hot epoch.
 - Predicted input still reaches and converges with the stock server.
 
 ## Limits
 
-The result measures the private Rust Session and VT projection on loopback. It
+The result measures the Rust Session and VT projection on loopback. It
 does not include LeanTTY, N-API, ArkTS, WebView rendering, a physical device,
 real WAN jitter, loss, reordering, Unicode prediction, paste, backspace, or
 interactive editor prediction. Timing samples are evidence for the relative

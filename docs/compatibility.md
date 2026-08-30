@@ -32,6 +32,12 @@ independent permissively licensed terminal model provides a second local check.
 This baseline does not claim compatibility with every terminal emulator or
 native cell renderer.
 
+The public Session supports the standard `Adaptive`, `Always`, and `Never`
+prediction display modes. `Adaptive` is the default. All three retain the same
+confirmed-epoch ASCII eligibility and authoritative convergence; experimental,
+overwrite, Unicode, paste, backspace, and control-sequence prediction remain
+outside the compatibility claim.
+
 Mosh synchronizes visible terminal state, not complete shell history. Tests
 must record local scrollback behavior, recovery effects, and limitations without
 claiming SSH-equivalent or persistent history.
@@ -75,7 +81,7 @@ output contract, and physical LeanTTY acceptance are defined in
 
 ## Deferred compatibility
 
-IPv6, configurable port ranges, prediction modes, locale negotiation, broad
+IPv6, configurable port ranges, broader prediction, locale negotiation, broad
 terminal application coverage, recoverable local UDP send errors, configurable
 reachability thresholds, and non-LeanTTY consumers require separate evidence. ProxyJump applies
 only to an embedding application's SSH bootstrap; it does not imply UDP

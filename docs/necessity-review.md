@@ -222,6 +222,11 @@ trait without a demonstrated consumer gate.
 
 ## Local prediction — keep the measured subset; defer extensions
 
+ADR 0010 later admits the demonstrated LeanTTY need for the standard
+`Adaptive`, `Always`, and `Never` display policy. It supersedes only this
+review's deferral of public prediction control; the measured predictor subset
+and rejection of broader prediction remain unchanged.
+
 **User value and evidence.** Controlled 40 ms and 80 ms one-way-delay stock
 fixtures reduced median visible printable-key echo from 108/189 ms to 0 ms.
 Prediction remains a display projection and becomes visible only after a stock
@@ -240,10 +245,10 @@ state but never confirms a prediction.
 
 **Phase 3D boundary and rollback.** Keep only printable single-byte ASCII and
 the confirmed-epoch rules in ADR 0005. Add an explicit erase-not-predicted
-regression before touching this code. Defer every broader heuristic and public
-prediction control until separate measurements and stock evidence justify its
-maintenance cost. The non-predictive private fixture remains the rollback and
-comparison path.
+regression before touching this code. ADR 0010 later adds a thin display gate
+after a real consumer need; defer every broader heuristic until separate
+measurements and stock evidence justify its maintenance cost. `Never` remains
+the rollback and comparison path.
 
 ## Timers, recovery, and roaming — keep; defer local-I/O recovery policy
 

@@ -12,7 +12,8 @@
 > [0006](decisions/0006-phase-2-core-viability-gate.md),
 > [0007](decisions/0007-public-session-api.md),
 > [0008](decisions/0008-authenticated-graceful-close.md), and
-> [0009](decisions/0009-session-reachability.md)
+> [0009](decisions/0009-session-reachability.md), and
+> [0010](decisions/0010-public-prediction-modes.md)
 
 The [Phase 3 mechanism necessity review](necessity-review.md) records which
 implemented mechanisms the stabilized library keeps and which behavior remains
@@ -214,6 +215,7 @@ The Phase 3 contract separates values by delivery semantics:
 
 ```text
 Session
+  ├─ creation policy: adaptive, always, or never prediction display
   ├─ bounded ordered commands: input, resize, repaint
   ├─ bounded ordered VT output: next_output
   ├─ latest lifecycle state: Connecting, Active, Closed
@@ -286,11 +288,12 @@ send focus events, and a full repaint explicitly disables the mode.
 
 ### Bounded local prediction
 
-The measured Phase 2 latency gate admits one private prediction layer. It is a
-display projection, not a second terminal authority. The confirmed stock screen
-remains in the SSP-indexed terminal-state map. Prediction retains at most 32
-single-byte printable ASCII records, one base screen, one projected screen,
-and one emitted display snapshot. It does not retain one screen per character.
+The measured Phase 2 latency gate admits one private prediction engine and ADR
+0010 adds one public per-Session display policy. The engine is a display
+projection, not a second terminal authority. The confirmed stock screen remains
+in the SSP-indexed terminal-state map. Prediction retains at most 32 single-byte
+printable ASCII records, one base screen, one projected screen, and one emitted
+display snapshot. It does not retain one screen per character.
 
 A new epoch begins tentatively. Its first character remains hidden until a
 stock echo acknowledgement names that client state and the authoritative screen
@@ -301,11 +304,14 @@ backspace, escape sequences, divergence, capacity exhaustion, or ten seconds of
 age clears it and returns painting to authority.
 
 The age limit bounds stale speculative display and memory; it never declares a
-prediction correct. Prediction does not add a client-only success timeout,
-public mode switch, cell patch protocol, or rendering acknowledgement. The
-ordered VT output and explicit full-repaint contracts remain unchanged.
-An explicit repaint clears prediction first and regenerates the latest
-authoritative screen.
+prediction correct. `Never` omits the projection, `Always` displays eligible
+confirmed-epoch input, and the standard `Adaptive` default displays it only
+when the existing authenticated RTT-derived frame interval indicates a slow
+link or a pending eligible projection reaches the bounded glitch delay.
+Prediction adds no client-only success timeout, runtime switch, cell patch
+protocol, or rendering acknowledgement. The ordered VT output and explicit
+full-repaint contracts remain unchanged. An explicit repaint clears prediction
+first and regenerates the latest authoritative screen.
 
 ### Display authority and recovery
 
@@ -366,7 +372,7 @@ PaneRuntime
 ```
 
 The adapter sends input, resize, repaint, graceful-close, and cancellation
-commands. It maps
+commands and selects the standard prediction mode when creating the Session. It maps
 native events to the owning Pane with a Session identifier and lifecycle
 generation. Pane close cancels the Session. Surface detach keeps the Session
 alive. Surface attach requests a full repaint. Page destruction cancels all

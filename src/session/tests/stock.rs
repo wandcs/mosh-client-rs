@@ -507,28 +507,25 @@ async fn start_private_session(
     mpsc::Receiver<Vec<u8>>,
     JoinHandle<Result<SessionExit, DriverError>>,
 ) {
-    start_private_session_with_prediction(bootstrap, true).await
+    start_private_session_with_prediction_mode(bootstrap, PredictionMode::Adaptive).await
 }
 
-async fn start_private_session_with_prediction(
+async fn start_private_session_with_prediction_mode(
     bootstrap: Bootstrap,
-    prediction_enabled: bool,
+    prediction_mode: PredictionMode,
 ) -> (
     TestSessionCommands,
     mpsc::Receiver<Vec<u8>>,
     JoinHandle<Result<SessionExit, DriverError>>,
 ) {
-    let (mut driver, channels) = SessionDriver::connect(bootstrap, 80, 24)
+    let (driver, channels) = SessionDriver::connect(bootstrap, 80, 24, prediction_mode)
         .await
         .unwrap_or_else(|error| panic!("private Session setup failed: {error:?}"));
-    if !prediction_enabled {
-        driver.disable_prediction();
-    }
     let SessionChannels {
         commands,
         output,
         cancellation,
-        graceful_close: _graceful_close,
+        graceful_close,
         ..
     } = channels;
     let task = tokio::spawn(async move {
@@ -542,6 +539,7 @@ async fn start_private_session_with_prediction(
         TestSessionCommands {
             commands,
             cancellation,
+            _graceful_close: graceful_close,
         },
         output,
         task,
@@ -564,6 +562,7 @@ async fn cancel_session(
 struct TestSessionCommands {
     commands: mpsc::Sender<SessionCommand>,
     cancellation: watch::Sender<bool>,
+    _graceful_close: watch::Sender<bool>,
 }
 
 impl TestSessionCommands {

@@ -415,7 +415,7 @@ Author:
   project-generated comparative timing measurement.
 - Source: [local-prediction fixture](fixtures/stock-1.4.0-local-prediction.md),
   `stock_1_4_0_echo_acknowledges_the_controlled_input_operation`, and
-  `stock_1_4_0_prediction_reduces_measured_interactive_echo_latency`.
+  `stock_1_4_0_prediction_modes_preserve_convergence_and_adapt_to_latency`.
 - Observed version: unmodified Ubuntu `mosh-server` 1.4.0 on Ubuntu 26.04 WSL
   x86-64, IPv4 loopback, `TERM=xterm-256color`, `LANG=C.UTF-8`, 80 columns, and
   24 rows.
@@ -488,3 +488,30 @@ Author:
   policy, not claims that every compatible implementation must use them.
   Reachability does not prove delivery of the newest input, future packet
   delivery, platform network availability, or server-process existence.
+
+### Public bounded prediction modes
+
+- Date: 2026-08-30
+- Behavior: an embedding client may select adaptive, always, or never local
+  prediction display per Session; adaptive is the standard default. Prediction
+  remains tentative display state until server echo acknowledgement confirms
+  its epoch and authoritative terminal state converges.
+- Evidence class: public command contract, published protocol design, and
+  project-controlled stock-server measurement.
+- Source: the public [Mosh usage contract](https://mosh.org/), the
+  [Mosh final paper](https://mosh.org/mosh-paper.pdf), and the
+  [local-prediction fixture](fixtures/stock-1.4.0-local-prediction.md).
+- Observed version: public Mosh behavior, published design, and unmodified
+  stock `mosh-server` 1.4.0 on Ubuntu 26.04 WSL x86-64.
+- Implementation consequence: export the exact three-value mode, default
+  `Session::connect` to adaptive, keep mode and adaptive state per Session, and
+  reuse authenticated RTT-derived frame pacing as the slow-link signal. The
+  project-owned adaptive policy enables above a 30 ms frame interval, disables
+  at or below 20 ms after visible convergence, and temporarily enables after a
+  250 ms eligible pending projection.
+- Architecture comparisons: stock Mosh, MoshCatty, and `mosh-go` informed the
+  public shape and complexity comparison only. No source, test, wire rule, or
+  file structure was copied or translated.
+- Limits: the mode changes only whether the existing confirmed-epoch ASCII
+  projection is displayed. It does not expand prediction eligibility, mutate
+  terminal authority, add a wire field, or claim identical stock heuristics.

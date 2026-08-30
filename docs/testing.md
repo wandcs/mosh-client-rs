@@ -73,7 +73,7 @@ ownership without removing duplication. The
 | Authenticated UDP safety | Standard primitive vectors, correct/wrong keys, corruption, replay, sequence and address-change tests |
 | Recovery and roaming | Deterministic loss/delay/reorder matrix plus real interruption and address-change acceptance |
 | Terminal correctness | Unicode, width, combining, cursor, color, resize, alternate screen, sustained I/O and independent renderer comparison |
-| Bounded local prediction | Deterministic confirmed/diverged predictions, epoch reset, control and paste rejection, limits, delayed confirmation, stock echo-ACK mapping and comparative latency |
+| Bounded local prediction | Deterministic confirmed/diverged predictions, three public modes, adaptive hysteresis and glitch timing, Session isolation, epoch reset, control and paste rejection, limits, stock echo-ACK mapping and comparative latency |
 | Small portable library | Linux host build, ARM64 HarmonyOS build, dependency audit and no remote runtime service |
 | Session isolation | Two concurrent Sessions with distinct keys, sockets, timers, terminal states, events, graceful close and cancellation |
 | LeanTTY value | Side-by-side SSH/Mosh scenarios under normal, interrupted, roaming, lock, sleep, UDP block and recovery conditions |
@@ -201,10 +201,12 @@ Cover:
 - control input, paste, backspace and resize without prediction; and
 - every terminal-state, line, cell and repaint limit.
 
-The non-predictive stock baseline and predictive Session run against independent
+The `Never`, `Always`, and `Adaptive` stock Sessions run against independent
 servers through the same fixed-delay relay. The fixture proves echo-ACK mapping,
-relative visible latency, conservative epoch activation, and final authoritative
-convergence. It does not replace later LeanTTY physical-device latency evidence.
+relative visible latency, conservative epoch activation, adaptive low/high-delay
+selection, and final authoritative convergence. Deterministic tests separately
+cover the exact hysteresis and glitch boundaries. This does not replace later
+LeanTTY physical-device latency evidence.
 
 ## VT output contract
 
@@ -273,8 +275,9 @@ owned by the Session.
 
 The first public-contract suite proves `Connecting` and `Closed`, cancellation
 outside the command queue, graceful-close command rejection and four-second
-bound, invalid command rejection before queueing, output closure, and
-`OwnerDropped`. Public stock fixtures additionally prove `Connecting` to
+bound, invalid command rejection before queueing, output closure,
+`OwnerDropped`, the adaptive prediction default, all three public modes, and
+per-Session mode ownership. Public stock fixtures additionally prove `Connecting` to
 `Active`, input, ordered VT output, full repaint, `LocalClosed`,
 `RemoteClosed`, `Cancelled`, and two-Session lifecycle isolation against stock
 1.4.0.
@@ -346,8 +349,8 @@ The first application matrix covers:
 - authenticated client source-address change with a fixed server endpoint;
 - wrong key, server disappearance and cancellation;
 - visible-state and scrollback behavior without claiming complete history; and
-- baseline versus bounded prediction under controlled bidirectional delay, with
-  an authoritative convergence marker.
+- `Never`, `Always`, and `Adaptive` prediction under controlled bidirectional
+  delay, with an authoritative convergence marker.
 
 The stock Session fixture treats alternate-screen compatibility as visible
 behavior, not preservation of a local terminal-buffer flag. Under the

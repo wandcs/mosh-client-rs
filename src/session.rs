@@ -28,7 +28,7 @@ use crate::limits::{
     MAX_INPUT_COMMAND_BYTES, PENDING_OUTPUT_CHUNKS, SESSION_COMMAND_QUEUE_CAPACITY,
 };
 use crate::packet::{Direction, PacketCodec, PacketError, PacketReceiver, SendSequence};
-use crate::prediction::LocalPrediction;
+use crate::prediction::{LocalPrediction, PredictionMode};
 use crate::synchronization::{
     AcknowledgementDisposition, RemoteStateDisposition, SynchronizationError, SynchronizationState,
 };
@@ -144,6 +144,8 @@ pub struct Session {
 impl Session {
     /// Creates a local Session and its independently driven protocol task.
     ///
+    /// Local prediction uses the standard [`PredictionMode::Adaptive`] policy.
+    ///
     /// # Errors
     ///
     /// Returns [`SessionError::InvalidTerminalSize`] for an unsupported initial
@@ -154,7 +156,28 @@ impl Session {
         columns: u32,
         rows: u32,
     ) -> Result<(Self, SessionTask), SessionError> {
-        let (driver, channels) = SessionDriver::connect(bootstrap, columns, rows)
+        Self::connect_with_prediction_mode(bootstrap, columns, rows, PredictionMode::default())
+            .await
+    }
+
+    /// Creates a local Session with an explicit local-prediction display policy.
+    ///
+    /// Prediction never changes authenticated terminal authority. [`PredictionMode::Always`]
+    /// displays only eligible predictions from a confirmed epoch, while
+    /// [`PredictionMode::Never`] displays only authenticated server state.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SessionError::InvalidTerminalSize`] for an unsupported initial
+    /// size, or [`SessionError::Io`] when the local UDP endpoint cannot be
+    /// created.
+    pub async fn connect_with_prediction_mode(
+        bootstrap: Bootstrap,
+        columns: u32,
+        rows: u32,
+        prediction_mode: PredictionMode,
+    ) -> Result<(Self, SessionTask), SessionError> {
+        let (driver, channels) = SessionDriver::connect(bootstrap, columns, rows, prediction_mode)
             .await
             .map_err(SessionError::from)?;
         let SessionChannels {
@@ -460,6 +483,7 @@ impl SessionDriver {
         bootstrap: Bootstrap,
         columns: u32,
         rows: u32,
+        prediction_mode: PredictionMode,
     ) -> Result<(Self, SessionChannels), DriverError> {
         let initial_terminal = TerminalState::new(columns, rows)?;
         let socket = UdpSocket::bind(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0)).await?;
@@ -500,7 +524,7 @@ impl SessionDriver {
                 datagram_timing: DatagramTiming::new(0),
                 client_history,
                 terminal_states,
-                prediction: LocalPrediction::new(),
+                prediction: LocalPrediction::new(prediction_mode),
                 painted_state: None,
                 output_requested: false,
                 force_full_repaint: false,
@@ -539,6 +563,13 @@ impl SessionDriver {
             }
             self.reassembler.expire(now_ms)?;
             if self.prediction.expire(now_ms) {
+                self.output_requested = true;
+            }
+            let estimator = self.datagram_timing.estimator();
+            let frame_interval_ms = estimator
+                .smoothed_rtt_ms()
+                .map(|_| estimator.frame_interval_ms());
+            if self.prediction.update_policy(now_ms, frame_interval_ms) {
                 self.output_requested = true;
             }
             match self.scheduler.poll(
@@ -602,11 +633,6 @@ impl SessionDriver {
                 }
             }
         }
-    }
-
-    #[cfg(test)]
-    fn disable_prediction(&mut self) {
-        self.prediction.disable();
     }
 
     fn now_ms(&self) -> Result<u64, DriverError> {

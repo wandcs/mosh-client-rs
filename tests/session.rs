@@ -2,8 +2,8 @@ use std::net::Ipv4Addr;
 use std::time::Duration;
 
 use mosh_client::{
-    Bootstrap, Session, SessionCommandError, SessionError, SessionExit, SessionReachability,
-    SessionState,
+    Bootstrap, PredictionMode, Session, SessionCommandError, SessionError, SessionExit,
+    SessionReachability, SessionState,
 };
 
 fn runtime() -> tokio::runtime::Runtime {
@@ -28,6 +28,30 @@ fn public_session_validates_initial_size_without_starting_a_task() {
             let result = Session::connect(bootstrap(), columns, rows).await;
             assert!(matches!(result, Err(SessionError::InvalidTerminalSize)));
         }
+    });
+}
+
+#[test]
+fn public_prediction_modes_default_to_adaptive_and_are_session_local() {
+    assert_eq!(PredictionMode::default(), PredictionMode::Adaptive);
+    runtime().block_on(async {
+        let (always, always_task) =
+            Session::connect_with_prediction_mode(bootstrap(), 80, 24, PredictionMode::Always)
+                .await
+                .unwrap();
+        let (never, never_task) =
+            Session::connect_with_prediction_mode(bootstrap(), 80, 24, PredictionMode::Never)
+                .await
+                .unwrap();
+        let always_task = tokio::spawn(always_task.run());
+        let never_task = tokio::spawn(never_task.run());
+
+        always.cancel();
+        assert_eq!(always_task.await.unwrap().unwrap(), SessionExit::Cancelled);
+        assert!(!never_task.is_finished());
+
+        never.cancel();
+        assert_eq!(never_task.await.unwrap().unwrap(), SessionExit::Cancelled);
     });
 }
 

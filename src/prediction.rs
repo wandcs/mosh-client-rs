@@ -1,9 +1,23 @@
 use std::collections::VecDeque;
 
 use crate::limits::{
-    MAX_PENDING_PREDICTION_BYTES, MAX_PENDING_PREDICTION_SCALARS, MAX_PREDICTION_AGE_MS,
+    ADAPTIVE_PREDICTION_DISABLE_FRAME_MS, ADAPTIVE_PREDICTION_ENABLE_FRAME_MS,
+    ADAPTIVE_PREDICTION_GLITCH_MS, MAX_PENDING_PREDICTION_BYTES, MAX_PENDING_PREDICTION_SCALARS,
+    MAX_PREDICTION_AGE_MS,
 };
 use crate::terminal::{TerminalError, TerminalState};
+
+/// Controls when confirmed local terminal predictions are displayed.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum PredictionMode {
+    /// Display predictions on slower links or during a temporary network glitch.
+    #[default]
+    Adaptive,
+    /// Display every eligible prediction after its epoch has been confirmed.
+    Always,
+    /// Display only authenticated terminal state from the server.
+    Never,
+}
 
 #[derive(Clone, Debug)]
 struct PendingPrediction {
@@ -14,18 +28,22 @@ struct PendingPrediction {
 
 #[derive(Debug)]
 pub(crate) struct LocalPrediction {
-    enabled: bool,
+    mode: PredictionMode,
     active_epoch: bool,
+    adaptive_slow_link: bool,
+    adaptive_glitch: bool,
     pending: VecDeque<PendingPrediction>,
     base: Option<TerminalState>,
     projected: Option<TerminalState>,
 }
 
 impl LocalPrediction {
-    pub(crate) const fn new() -> Self {
+    pub(crate) const fn new(mode: PredictionMode) -> Self {
         Self {
-            enabled: true,
+            mode,
             active_epoch: false,
+            adaptive_slow_link: false,
+            adaptive_glitch: false,
             pending: VecDeque::new(),
             base: None,
             projected: None,
@@ -39,7 +57,7 @@ impl LocalPrediction {
         authoritative: &TerminalState,
         now_ms: u64,
     ) -> Result<bool, TerminalError> {
-        if !self.enabled {
+        if self.mode == PredictionMode::Never {
             return Ok(false);
         }
         let Some(byte) = predictable_byte(bytes) else {
@@ -71,7 +89,7 @@ impl LocalPrediction {
             created_at_ms: now_ms,
             byte,
         });
-        Ok(self.active_epoch)
+        Ok(self.displaying_prediction())
     }
 
     pub(crate) fn observe_authoritative(
@@ -79,7 +97,7 @@ impl LocalPrediction {
         echo_acknowledgement: Option<u64>,
         authoritative: &TerminalState,
     ) -> Result<(), TerminalError> {
-        if !self.enabled {
+        if self.mode == PredictionMode::Never {
             return Ok(());
         }
         let Some(echo_acknowledgement) = echo_acknowledgement else {
@@ -112,6 +130,7 @@ impl LocalPrediction {
         if self.pending.is_empty() {
             self.base = None;
             self.projected = None;
+            self.adaptive_glitch = false;
         } else {
             let mut projected = authoritative.clone();
             for prediction in &self.pending {
@@ -124,7 +143,7 @@ impl LocalPrediction {
     }
 
     pub(crate) fn display<'a>(&'a self, authoritative: &'a TerminalState) -> &'a TerminalState {
-        if self.active_epoch {
+        if self.displaying_prediction() {
             self.projected.as_ref().unwrap_or(authoritative)
         } else {
             authoritative
@@ -132,7 +151,29 @@ impl LocalPrediction {
     }
 
     pub(crate) fn next_deadline_ms(&self) -> Option<u64> {
-        if !self.enabled {
+        let expiry = self.expiration_deadline_ms();
+        let glitch = if self.mode == PredictionMode::Adaptive
+            && self.active_epoch
+            && !self.adaptive_slow_link
+            && !self.adaptive_glitch
+        {
+            self.pending.front().map(|prediction| {
+                prediction
+                    .created_at_ms
+                    .saturating_add(ADAPTIVE_PREDICTION_GLITCH_MS)
+            })
+        } else {
+            None
+        };
+        match (expiry, glitch) {
+            (Some(expiry), Some(glitch)) => Some(expiry.min(glitch)),
+            (Some(deadline), None) | (None, Some(deadline)) => Some(deadline),
+            (None, None) => None,
+        }
+    }
+
+    fn expiration_deadline_ms(&self) -> Option<u64> {
+        if self.mode == PredictionMode::Never {
             return None;
         }
         self.pending.front().map(|prediction| {
@@ -144,7 +185,7 @@ impl LocalPrediction {
 
     pub(crate) fn expire(&mut self, now_ms: u64) -> bool {
         if self
-            .next_deadline_ms()
+            .expiration_deadline_ms()
             .is_some_and(|deadline| now_ms >= deadline)
         {
             self.clear()
@@ -153,9 +194,48 @@ impl LocalPrediction {
         }
     }
 
+    pub(crate) fn update_policy(&mut self, now_ms: u64, frame_interval_ms: Option<u64>) -> bool {
+        let was_displayed = self.displaying_prediction();
+        if self.mode != PredictionMode::Adaptive {
+            return false;
+        }
+
+        if let Some(frame_interval_ms) = frame_interval_ms {
+            if frame_interval_ms > ADAPTIVE_PREDICTION_ENABLE_FRAME_MS {
+                self.adaptive_slow_link = true;
+            } else if frame_interval_ms <= ADAPTIVE_PREDICTION_DISABLE_FRAME_MS && !was_displayed {
+                self.adaptive_slow_link = false;
+            }
+        }
+        if self.pending.is_empty() {
+            self.adaptive_glitch = false;
+        } else if self.active_epoch
+            && self.pending.front().is_some_and(|prediction| {
+                now_ms
+                    >= prediction
+                        .created_at_ms
+                        .saturating_add(ADAPTIVE_PREDICTION_GLITCH_MS)
+            })
+        {
+            self.adaptive_glitch = true;
+        }
+        was_displayed != self.displaying_prediction()
+    }
+
+    fn displaying_prediction(&self) -> bool {
+        self.active_epoch
+            && !self.pending.is_empty()
+            && match self.mode {
+                PredictionMode::Adaptive => self.adaptive_slow_link || self.adaptive_glitch,
+                PredictionMode::Always => true,
+                PredictionMode::Never => false,
+            }
+    }
+
     fn clear(&mut self) -> bool {
-        let displayed_prediction = self.active_epoch && !self.pending.is_empty();
+        let displayed_prediction = self.displaying_prediction();
         self.active_epoch = false;
+        self.adaptive_glitch = false;
         self.pending.clear();
         self.base = None;
         self.projected = None;
@@ -164,15 +244,6 @@ impl LocalPrediction {
 
     pub(crate) fn reset(&mut self) -> bool {
         self.clear()
-    }
-
-    #[cfg(test)]
-    pub(crate) fn disable(&mut self) {
-        self.enabled = false;
-        self.active_epoch = false;
-        self.pending.clear();
-        self.base = None;
-        self.projected = None;
     }
 }
 

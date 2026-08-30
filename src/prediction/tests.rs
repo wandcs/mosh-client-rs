@@ -8,10 +8,14 @@ fn state(text: &[u8]) -> TerminalState {
     state
 }
 
+fn prediction(mode: PredictionMode) -> LocalPrediction {
+    LocalPrediction::new(mode)
+}
+
 #[test]
 fn first_prediction_stays_hidden_until_stock_echo_confirmation() {
     let authoritative = state(b"prompt> ");
-    let mut prediction = LocalPrediction::new();
+    let mut prediction = prediction(PredictionMode::Always);
 
     assert!(
         !prediction
@@ -42,7 +46,7 @@ fn first_prediction_stays_hidden_until_stock_echo_confirmation() {
 #[test]
 fn matching_authority_confirms_visible_predictions_without_changing_projection() {
     let authoritative = state(b"a");
-    let mut prediction = LocalPrediction::new();
+    let mut prediction = prediction(PredictionMode::Always);
     prediction.active_epoch = true;
     prediction
         .observe_input(3, b"b", &authoritative, 20)
@@ -65,7 +69,7 @@ fn matching_authority_confirms_visible_predictions_without_changing_projection()
 #[test]
 fn one_divergence_or_control_input_clears_the_visible_projection() {
     let authoritative = state(b"a");
-    let mut prediction = LocalPrediction::new();
+    let mut prediction = prediction(PredictionMode::Always);
     prediction.active_epoch = true;
     prediction
         .observe_input(3, b"b", &authoritative, 20)
@@ -93,7 +97,7 @@ fn one_divergence_or_control_input_clears_the_visible_projection() {
 #[test]
 fn paste_and_additional_tentative_input_are_never_speculated() {
     let authoritative = state(b"a");
-    let mut prediction = LocalPrediction::new();
+    let mut prediction = prediction(PredictionMode::Always);
 
     assert!(
         !prediction
@@ -117,7 +121,7 @@ fn paste_and_additional_tentative_input_are_never_speculated() {
 #[test]
 fn erase_and_mixed_input_never_enter_the_projection() {
     let authoritative = state(b"prompt> ");
-    let mut prediction = LocalPrediction::new();
+    let mut prediction = prediction(PredictionMode::Always);
     prediction.active_epoch = true;
 
     assert!(
@@ -184,7 +188,7 @@ fn erase_and_mixed_input_never_enter_the_projection() {
 #[test]
 fn prediction_age_and_capacity_are_bounded() {
     let authoritative = state(b"");
-    let mut prediction = LocalPrediction::new();
+    let mut prediction = prediction(PredictionMode::Always);
     prediction.active_epoch = true;
 
     for state in 1..=MAX_PENDING_PREDICTION_SCALARS {
@@ -210,4 +214,86 @@ fn prediction_age_and_capacity_are_bounded() {
     assert!(!prediction.expire(10_019));
     assert!(prediction.expire(10_020));
     assert!(prediction.pending.is_empty());
+}
+
+#[test]
+fn never_keeps_only_authoritative_display_state() {
+    let authoritative = state(b"prompt> ");
+    let mut prediction = prediction(PredictionMode::Never);
+
+    assert!(
+        !prediction
+            .observe_input(2, b"a", &authoritative, 10)
+            .unwrap()
+    );
+    assert!(prediction.pending.is_empty());
+    assert!(
+        prediction
+            .display(&authoritative)
+            .display_equivalent(&authoritative)
+    );
+    assert_eq!(prediction.next_deadline_ms(), None);
+}
+
+#[test]
+fn adaptive_uses_slow_link_hysteresis_without_retracting_visible_input() {
+    let authoritative = state(b"prompt> ");
+    let mut prediction = prediction(PredictionMode::Adaptive);
+    prediction.active_epoch = true;
+
+    assert!(
+        !prediction
+            .observe_input(2, b"a", &authoritative, 10)
+            .unwrap()
+    );
+    assert!(!prediction.update_policy(10, None));
+    assert!(prediction.update_policy(10, Some(31)));
+    assert!(
+        prediction
+            .display(&authoritative)
+            .display_equivalent(&state(b"prompt> a"))
+    );
+
+    assert!(!prediction.update_policy(11, Some(25)));
+    assert!(!prediction.update_policy(12, Some(20)));
+    let confirmed = state(b"prompt> a");
+    prediction
+        .observe_authoritative(Some(2), &confirmed)
+        .unwrap();
+    assert!(!prediction.update_policy(13, Some(20)));
+
+    assert!(!prediction.observe_input(3, b"b", &confirmed, 14).unwrap());
+    assert!(
+        prediction
+            .display(&confirmed)
+            .display_equivalent(&confirmed)
+    );
+}
+
+#[test]
+fn adaptive_temporarily_displays_a_prediction_during_a_glitch() {
+    let authoritative = state(b"prompt> ");
+    let mut prediction = prediction(PredictionMode::Adaptive);
+    prediction.active_epoch = true;
+
+    assert!(
+        !prediction
+            .observe_input(2, b"a", &authoritative, 100)
+            .unwrap()
+    );
+    assert_eq!(prediction.next_deadline_ms(), Some(350));
+    assert!(!prediction.update_policy(349, Some(20)));
+    assert!(prediction.update_policy(350, Some(20)));
+    assert!(
+        prediction
+            .display(&authoritative)
+            .display_equivalent(&state(b"prompt> a"))
+    );
+
+    let confirmed = state(b"prompt> a");
+    prediction
+        .observe_authoritative(Some(2), &confirmed)
+        .unwrap();
+    assert!(!prediction.update_policy(351, Some(20)));
+    assert!(!prediction.observe_input(3, b"b", &confirmed, 352).unwrap());
 }

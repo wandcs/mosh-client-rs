@@ -46,13 +46,17 @@ metadata. See [the roadmap](docs/roadmap.md), the
 The caller runs the task on its own Tokio executor, sends input or resize
 commands through the handle, consumes ordered VT chunks, and explicitly closes,
 cancels, or drops the Session. Reachability remains independent from lifecycle
-and output backpressure. See
+and output backpressure. Prediction display defaults to `Adaptive`; callers can
+select `Adaptive`, `Always`, or `Never` per Session with
+`Session::connect_with_prediction_mode`. See
 [ADR 0007](docs/decisions/0007-public-session-api.md) for lifecycle and
 backpressure semantics and
 [ADR 0008](docs/decisions/0008-authenticated-graceful-close.md) for the
 authenticated close exchange, and
 [ADR 0009](docs/decisions/0009-session-reachability.md) for reachability and
-initial attachment timeout.
+initial attachment timeout, and
+[ADR 0010](docs/decisions/0010-public-prediction-modes.md) for the bounded
+prediction-mode contract.
 
 ## Goal
 

@@ -13,22 +13,22 @@ use crate::limits::MAX_DATAGRAM_BYTES;
 
 #[test]
 #[ignore = "requires a locally installed stock mosh-server 1.4.0"]
-fn stock_1_4_0_prediction_reduces_measured_interactive_echo_latency() {
-    const CASES: [(&str, &str, u64); 3] = [
-        ("60500:60509", "60510:60519", 0),
-        ("60520:60529", "60530:60539", 40),
-        ("60540:60549", "60550:60559", 80),
+fn stock_1_4_0_prediction_modes_preserve_convergence_and_adapt_to_latency() {
+    const CASES: [(&str, &str, &str, u64); 3] = [
+        ("60500:60509", "60510:60519", "60720:60729", 0),
+        ("60520:60529", "60530:60539", "60730:60739", 40),
+        ("60540:60549", "60550:60559", "60740:60749", 80),
     ];
 
     assert_stock_1_4_0("mosh-server");
     let runtime = stock_runtime();
 
-    for (baseline_ports, prediction_ports, one_way_delay_ms) in CASES {
+    for (baseline_ports, always_ports, adaptive_ports, one_way_delay_ms) in CASES {
         let (bootstrap, mut server) = start_stock_server(baseline_ports);
         let baseline = runtime.block_on(measure_echo_latency(
             bootstrap,
             Duration::from_millis(one_way_delay_ms),
-            false,
+            PredictionMode::Never,
         ));
         assert!(server.terminate(), "stock server fixture did not clean up");
 
@@ -38,29 +38,47 @@ fn stock_1_4_0_prediction_reduces_measured_interactive_echo_latency() {
             "a non-predictive echo bypassed the configured bidirectional relay delay"
         );
 
-        let (bootstrap, mut server) = start_stock_server(prediction_ports);
-        let predicted = runtime.block_on(measure_echo_latency(
+        let (bootstrap, mut server) = start_stock_server(always_ports);
+        let always = runtime.block_on(measure_echo_latency(
             bootstrap,
             Duration::from_millis(one_way_delay_ms),
-            true,
+            PredictionMode::Always,
         ));
         assert!(server.terminate(), "stock server fixture did not clean up");
 
         let baseline_median = median_millis(&baseline);
-        let predicted_median = median_millis(&predicted);
+        let always_median = median_millis(&always);
         if one_way_delay_ms > 0 {
             assert!(
-                predicted_median.saturating_mul(2) < baseline_median,
-                "prediction did not materially reduce the median visible latency"
+                always_median.saturating_mul(2) < baseline_median,
+                "always prediction did not materially reduce the median visible latency"
+            );
+        }
+
+        let (bootstrap, mut server) = start_stock_server(adaptive_ports);
+        let adaptive = runtime.block_on(measure_echo_latency(
+            bootstrap,
+            Duration::from_millis(one_way_delay_ms),
+            PredictionMode::Adaptive,
+        ));
+        assert!(server.terminate(), "stock server fixture did not clean up");
+        let adaptive_median = median_millis(&adaptive);
+        if one_way_delay_ms == 0 {
+            assert!(
+                adaptive_median.saturating_mul(2) >= baseline_median,
+                "adaptive prediction treated the low-delay link as slow"
+            );
+        } else {
+            assert!(
+                adaptive_median.saturating_mul(2) < baseline_median,
+                "adaptive prediction did not activate on the delayed link"
             );
         }
         eprintln!(
-            "echo latency: one-way delay={one_way_delay_ms} ms, baseline={:?} (median={baseline_median} ms), predicted={:?} (median={predicted_median} ms)",
+            "echo latency: one-way delay={one_way_delay_ms} ms, never={:?} (median={baseline_median} ms), always={:?} (median={always_median} ms), adaptive={:?} (median={adaptive_median} ms)",
             baseline.iter().map(Duration::as_millis).collect::<Vec<_>>(),
-            predicted
-                .iter()
-                .map(Duration::as_millis)
-                .collect::<Vec<_>>(),
+            always.iter().map(Duration::as_millis).collect::<Vec<_>>(),
+            adaptive.iter().map(Duration::as_millis).collect::<Vec<_>>(),
         );
     }
 }
@@ -68,12 +86,12 @@ fn stock_1_4_0_prediction_reduces_measured_interactive_echo_latency() {
 async fn measure_echo_latency(
     bootstrap: Bootstrap,
     one_way_delay: Duration,
-    prediction_enabled: bool,
+    prediction_mode: PredictionMode,
 ) -> Vec<Duration> {
     let relay = UdpRelay::start_with_delay(bootstrap.server_addr(), one_way_delay).await;
     let bootstrap = bootstrap.with_test_server_addr(relay.endpoint());
     let (commands, mut output, task) =
-        start_private_session_with_prediction(bootstrap, prediction_enabled).await;
+        start_private_session_with_prediction_mode(bootstrap, prediction_mode).await;
     let mut projection = vt100::Parser::new(24, 80, 0);
 
     wait_for_screen(&mut output, &mut projection, "MOSH_SESSION> ").await;
@@ -406,8 +424,8 @@ async fn exercise_public_session_isolation(
     bootstrap_b: Bootstrap,
     bootstrap_replacement: Bootstrap,
 ) {
-    let mut session_a = PublicStockSession::start(bootstrap_a).await;
-    let mut session_b = PublicStockSession::start(bootstrap_b).await;
+    let mut session_a = PublicStockSession::start(bootstrap_a, PredictionMode::Always).await;
+    let mut session_b = PublicStockSession::start(bootstrap_b, PredictionMode::Never).await;
     assert_ne!(session_a.endpoint(), session_b.endpoint());
 
     session_a.send_and_wait("SESSION_A_ONLY").await;
@@ -429,7 +447,8 @@ async fn exercise_public_session_isolation(
     session_b.prove_timer_continues().await;
     session_b.send_and_wait("SESSION_B_AFTER_A_CANCEL").await;
 
-    let mut replacement = PublicStockSession::start(bootstrap_replacement).await;
+    let mut replacement =
+        PublicStockSession::start(bootstrap_replacement, PredictionMode::Adaptive).await;
     assert_ne!(session_a.endpoint(), replacement.endpoint());
     assert_ne!(session_b.endpoint(), replacement.endpoint());
     replacement.inject(&old_a_datagram).await;
@@ -451,12 +470,13 @@ struct PublicStockSession {
 }
 
 impl PublicStockSession {
-    async fn start(bootstrap: Bootstrap) -> Self {
+    async fn start(bootstrap: Bootstrap, prediction_mode: PredictionMode) -> Self {
         let relay = UdpRelay::start(bootstrap.server_addr()).await;
         let bootstrap = bootstrap.with_test_server_addr(relay.endpoint());
-        let (mut session, task) = Session::connect(bootstrap, 80, 24)
-            .await
-            .expect("public Session setup failed");
+        let (mut session, task) =
+            Session::connect_with_prediction_mode(bootstrap, 80, 24, prediction_mode)
+                .await
+                .expect("public Session setup failed");
         let task = tokio::spawn(task.run());
         let mut projection = vt100::Parser::new(24, 80, 0);
         wait_for_public_screen(&mut session, &mut projection, "MOSH_SESSION> ").await;

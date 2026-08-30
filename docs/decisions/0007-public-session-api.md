@@ -68,7 +68,8 @@ errors remain private so implementation changes do not expand the public API.
 - The caller owns task spawning, output consumption, and the policy for
   presenting public error categories.
 - The API does not expose SSH bootstrap, a CLI, a generic transport, terminal
-  cells, prediction controls, or LeanTTY-specific types.
+  cells, or LeanTTY-specific types. ADR 0010 later adds one standard
+  per-Session prediction-mode input without changing lifecycle or output.
 - Additive convenience methods remain possible, but Phase 3 isolation and fuzz
   work must use this contract before it is considered stable for publishing.
 

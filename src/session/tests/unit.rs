@@ -16,7 +16,10 @@ fn cancellation_closes_the_private_driver_without_a_server() {
             b"MOSH CONNECT 65000 4NeCCgvZFe2RnPgrcU1PQw",
         )
         .unwrap();
-        let (driver, channels) = SessionDriver::connect(bootstrap, 80, 24).await.unwrap();
+        let (driver, channels) =
+            SessionDriver::connect(bootstrap, 80, 24, PredictionMode::Adaptive)
+                .await
+                .unwrap();
         let SessionChannels {
             commands: _commands,
             output: _output,
@@ -52,7 +55,10 @@ fn cancellation_preempts_a_blocked_output_reservation() {
             b"MOSH CONNECT 65000 4NeCCgvZFe2RnPgrcU1PQw",
         )
         .unwrap();
-        let (mut driver, channels) = SessionDriver::connect(bootstrap, 80, 24).await.unwrap();
+        let (mut driver, channels) =
+            SessionDriver::connect(bootstrap, 80, 24, PredictionMode::Adaptive)
+                .await
+                .unwrap();
         driver.output_requested = true;
         driver.output_tx.try_send(b"occupied".to_vec()).unwrap();
         let SessionChannels {
@@ -90,7 +96,10 @@ fn cancellation_preempts_a_blocked_final_output_drain() {
             b"MOSH CONNECT 65000 4NeCCgvZFe2RnPgrcU1PQw",
         )
         .unwrap();
-        let (mut driver, channels) = SessionDriver::connect(bootstrap, 80, 24).await.unwrap();
+        let (mut driver, channels) =
+            SessionDriver::connect(bootstrap, 80, 24, PredictionMode::Adaptive)
+                .await
+                .unwrap();
         driver.output_requested = true;
         driver.output_tx.try_send(b"occupied".to_vec()).unwrap();
         let SessionChannels {
@@ -132,7 +141,10 @@ fn initial_attachment_timeout_is_reported_before_any_peer_state() {
             b"MOSH CONNECT 65000 4NeCCgvZFe2RnPgrcU1PQw",
         )
         .unwrap();
-        let (mut driver, channels) = SessionDriver::connect(bootstrap, 80, 24).await.unwrap();
+        let (mut driver, channels) =
+            SessionDriver::connect(bootstrap, 80, 24, PredictionMode::Adaptive)
+                .await
+                .unwrap();
         driver.started_at = Instant::now() - Duration::from_millis(INITIAL_ATTACHMENT_TIMEOUT_MS);
         let mut state = channels.state;
 

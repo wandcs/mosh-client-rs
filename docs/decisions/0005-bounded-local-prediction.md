@@ -3,6 +3,10 @@
 - Status: Accepted
 - Date: 2026-08-30
 
+ADR 0010 later adds a public per-Session display policy. It supersedes only
+this decision's original exclusion of prediction modes; the bounded predictor,
+confirmed epoch, authority, eligibility, and resource limits remain unchanged.
+
 ## Context
 
 Phase 2 required a usable non-predictive Session before admitting local
@@ -35,9 +39,10 @@ terminal state.
 - Pending characters share one base and one projected screen; the queue does
   not retain a full screen per character. An explicit repaint clears the
   projection and emits authority.
-- Output remains the existing bounded, ordered VT byte stream. The crate adds
-  no prediction mode, display acknowledgement, cell API, or consumer-specific
-  type to its public contract.
+- Output remains the existing bounded, ordered VT byte stream. The initial
+  implementation added no display acknowledgement, cell API, or
+  consumer-specific type. ADR 0010 later adds only the standard three-value
+  per-Session prediction display policy.
 
 ## Evidence
 

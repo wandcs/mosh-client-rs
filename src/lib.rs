@@ -35,6 +35,7 @@ mod timing;
 
 pub use bootstrap::Bootstrap;
 pub use error::BootstrapError;
+pub use prediction::PredictionMode;
 pub use session::{
     Session, SessionCommandError, SessionError, SessionExit, SessionInterruption,
     SessionReachability, SessionReachabilityWatch, SessionState, SessionTask,
