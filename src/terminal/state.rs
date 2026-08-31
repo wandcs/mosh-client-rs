@@ -14,6 +14,7 @@ const MAX_BYTES_BEFORE_COMBINING_APPEND: usize = VT100_CELL_CONTENT_BYTES - 4;
 #[derive(Clone)]
 pub(crate) struct TerminalState {
     screen: vt100::Screen,
+    echo_acknowledgement: Option<u64>,
 }
 
 impl fmt::Debug for TerminalState {
@@ -23,6 +24,7 @@ impl fmt::Debug for TerminalState {
             .debug_struct("TerminalState")
             .field("rows", &rows)
             .field("columns", &columns)
+            .field("echo_acknowledgement", &self.echo_acknowledgement)
             .field("contents", &"[REDACTED]")
             .finish()
     }
@@ -33,6 +35,7 @@ impl TerminalState {
         let (rows, columns) = checked_size(columns, rows)?;
         Ok(Self {
             screen: vt100::Parser::new(rows, columns, 0).screen().clone(),
+            echo_acknowledgement: None,
         })
     }
 
@@ -45,7 +48,15 @@ impl TerminalState {
                     let (rows, columns) = checked_size(*columns, *rows)?;
                     next.screen.set_size(rows, columns);
                 }
-                TerminalOperation::EchoAcknowledgement(_) => {}
+                TerminalOperation::EchoAcknowledgement(number) => {
+                    if next
+                        .echo_acknowledgement
+                        .is_some_and(|current| *number < current)
+                    {
+                        return Err(TerminalError::InvalidOperation);
+                    }
+                    next.echo_acknowledgement = Some(*number);
+                }
             }
         }
         Ok(next)
@@ -53,6 +64,16 @@ impl TerminalState {
 
     pub(crate) const fn screen(&self) -> &vt100::Screen {
         &self.screen
+    }
+
+    pub(crate) const fn echo_acknowledgement(&self) -> Option<u64> {
+        self.echo_acknowledgement
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_test_echo_acknowledgement(mut self, number: u64) -> Self {
+        self.echo_acknowledgement = Some(number);
+        self
     }
 
     pub(crate) fn with_predicted_ascii(&self, byte: u8) -> Result<Self, TerminalError> {
@@ -321,8 +342,36 @@ mod tests {
         assert!(next.screen.cell(0, 2).unwrap().is_wide_continuation());
         assert_eq!(next.screen.cell(0, 3).unwrap().contents(), "Z");
         assert_eq!(next.screen.cell(0, 4).unwrap().contents(), "!");
+        assert_eq!(next.echo_acknowledgement(), Some(9));
         assert_eq!(initial.screen.size(), (24, 80));
+        assert_eq!(initial.echo_acknowledgement(), None);
         assert!(!initial.screen.cell(0, 0).unwrap().has_contents());
+
+        let later = next.apply(&difference(vec![host_bytes(b"later")])).unwrap();
+        assert_eq!(later.echo_acknowledgement(), Some(9));
+    }
+
+    #[test]
+    fn rejects_decreasing_echo_acknowledgements() {
+        let acknowledged = TerminalState::new(80, 24)
+            .unwrap()
+            .apply(&difference(vec![WireHostOperation {
+                host_bytes: None,
+                size: None,
+                echo_acknowledgement: Some(WireEchoAcknowledgement { number: 9 }),
+            }]))
+            .unwrap();
+
+        assert_eq!(
+            acknowledged
+                .apply(&difference(vec![WireHostOperation {
+                    host_bytes: None,
+                    size: None,
+                    echo_acknowledgement: Some(WireEchoAcknowledgement { number: 8 }),
+                }]))
+                .unwrap_err(),
+            TerminalError::InvalidOperation
+        );
     }
 
     #[test]

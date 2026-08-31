@@ -93,13 +93,18 @@ Controlled stock-server fixtures now establish the server-side terminal shapes:
 | --- | --- |
 | `1 → 2 → 4` | Apply one self-contained UTF-8 VT screen patch |
 | `1 → 3 → 5/6` | Set terminal columns and rows before later operations |
-| `1 → 7 → 8` | Echo acknowledgement; identifies the client state used to confirm a tentative prediction epoch |
+| `1 → 7 → 8` | Echo acknowledgement; monotonically advances the terminal state's retained client-state watermark used to confirm a tentative prediction epoch |
 
 The terminal decoder preserves operation order, applies each difference to a
 cloned SSP reference screen, and rejects invalid UTF-8, incomplete VT, invalid
 sizes, and ambiguous known operations. Unknown Protocol Buffers fields retain
 normal forward-compatible semantics. The first profile caps a difference at
 2 MiB, 4,096 operations, 100,000 cells, and eight Unicode scalars per cell.
+The cloned state also inherits the latest echo-acknowledgement watermark when a
+difference contains only HostBytes or resize operations. A decreasing watermark
+is invalid. Prediction compares authority with bounded candidate prefixes, so
+HostBytes and acknowledgement progress need not share one difference or arrive
+in one preferred order.
 
 Stock 1.4.0 screen initialization also sends reset-only sequences for mouse
 highlight tracking, focus reporting, and urxvt mouse encoding. The terminal

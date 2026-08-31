@@ -1,4 +1,5 @@
 use super::*;
+use proptest::prelude::*;
 
 fn state(text: &[u8]) -> TerminalState {
     let mut state = TerminalState::new(80, 24).unwrap();
@@ -6,6 +7,10 @@ fn state(text: &[u8]) -> TerminalState {
         state = state.with_predicted_ascii(*byte).unwrap();
     }
     state
+}
+
+fn state_with_acknowledgement(text: &[u8], number: u64) -> TerminalState {
+    state(text).with_test_echo_acknowledgement(number)
 }
 
 fn prediction(mode: PredictionMode) -> LocalPrediction {
@@ -28,12 +33,10 @@ fn first_prediction_stays_hidden_until_stock_echo_confirmation() {
             .display_equivalent(&authoritative)
     );
 
-    let confirmed = authoritative.with_predicted_ascii(b'a').unwrap();
-    prediction
-        .observe_authoritative(Some(2), &confirmed)
-        .unwrap();
+    let confirmed = state_with_acknowledgement(b"prompt> a", 2);
+    prediction.observe_authoritative(&confirmed).unwrap();
     assert!(prediction.pending.is_empty());
-    assert!(prediction.active_epoch);
+    assert_eq!(prediction.confidence, EpochConfidence::Confirmed);
 
     assert!(prediction.observe_input(3, b"b", &confirmed, 20).unwrap());
     assert!(
@@ -53,33 +56,103 @@ fn acknowledgement_free_authority_preserves_a_confirmed_idle_epoch() {
             .observe_input(2, b"a", &authoritative, 10)
             .unwrap()
     );
-    let confirmed = state(b"prompt> a");
-    prediction
-        .observe_authoritative(Some(2), &confirmed)
-        .unwrap();
-    assert!(prediction.active_epoch);
+    let confirmed = state_with_acknowledgement(b"prompt> a", 2);
+    prediction.observe_authoritative(&confirmed).unwrap();
+    assert_eq!(prediction.confidence, EpochConfidence::Confirmed);
 
-    prediction.observe_authoritative(None, &confirmed).unwrap();
+    prediction.observe_authoritative(&confirmed).unwrap();
 
-    assert!(prediction.active_epoch);
+    assert_eq!(prediction.confidence, EpochConfidence::Confirmed);
     assert!(prediction.observe_input(3, b"b", &confirmed, 20).unwrap());
+}
+
+#[test]
+fn host_effect_before_echo_acknowledgement_preserves_the_tentative_epoch() {
+    let authoritative = state(b"prompt> ");
+    let mut prediction = prediction(PredictionMode::Always);
+
+    assert!(
+        !prediction
+            .observe_input(2, b"a", &authoritative, 10)
+            .unwrap()
+    );
+
+    let host_effect = state(b"prompt> a");
+    prediction.observe_authoritative(&host_effect).unwrap();
+    assert_eq!(prediction.confidence, EpochConfidence::Tentative);
+    assert_eq!(prediction.pending.len(), 1);
+
+    let acknowledged = state_with_acknowledgement(b"prompt> a", 2);
+    prediction.observe_authoritative(&acknowledged).unwrap();
+    assert_eq!(prediction.confidence, EpochConfidence::Confirmed);
+    assert!(prediction.pending.is_empty());
+    assert!(
+        prediction
+            .observe_input(3, b"b", &acknowledged, 20)
+            .unwrap()
+    );
+}
+
+#[test]
+fn tentative_epoch_records_input_beyond_the_first_candidate() {
+    let authoritative = state(b"prompt> ");
+    let mut prediction = prediction(PredictionMode::Always);
+
+    assert!(
+        !prediction
+            .observe_input(2, b"a", &authoritative, 10)
+            .unwrap()
+    );
+    assert!(
+        !prediction
+            .observe_input(3, b"b", &authoritative, 11)
+            .unwrap()
+    );
+    assert_eq!(prediction.pending.len(), 2);
+
+    let both_host_effects = state_with_acknowledgement(b"prompt> ab", 2);
+    prediction
+        .observe_authoritative(&both_host_effects)
+        .unwrap();
+    assert_eq!(prediction.confidence, EpochConfidence::Confirmed);
+    assert!(prediction.pending.is_empty());
+    assert!(
+        prediction
+            .observe_input(4, b"c", &both_host_effects, 20)
+            .unwrap()
+    );
+}
+
+#[test]
+fn acknowledgement_that_outpaces_host_effect_clears_candidates() {
+    let authoritative = state(b"prompt> ");
+    let mut prediction = prediction(PredictionMode::Always);
+
+    prediction
+        .observe_input(2, b"a", &authoritative, 10)
+        .unwrap();
+    let acknowledgement_without_effect = state_with_acknowledgement(b"prompt> ", 2);
+    prediction
+        .observe_authoritative(&acknowledgement_without_effect)
+        .unwrap();
+
+    assert_eq!(prediction.confidence, EpochConfidence::Tentative);
+    assert!(prediction.pending.is_empty());
 }
 
 #[test]
 fn acknowledgement_free_authority_clears_only_a_diverged_pending_projection() {
     let authoritative = state(b"prompt> ");
     let mut prediction = prediction(PredictionMode::Always);
-    prediction.active_epoch = true;
+    prediction.confidence = EpochConfidence::Confirmed;
     assert!(
         prediction
             .observe_input(2, b"a", &authoritative, 10)
             .unwrap()
     );
 
-    prediction
-        .observe_authoritative(None, &authoritative)
-        .unwrap();
-    assert!(prediction.active_epoch);
+    prediction.observe_authoritative(&authoritative).unwrap();
+    assert_eq!(prediction.confidence, EpochConfidence::Confirmed);
     assert_eq!(prediction.pending.len(), 1);
     assert!(
         prediction
@@ -88,9 +161,9 @@ fn acknowledgement_free_authority_clears_only_a_diverged_pending_projection() {
     );
 
     prediction
-        .observe_authoritative(None, &state(b"changed"))
+        .observe_authoritative(&state(b"changed"))
         .unwrap();
-    assert!(!prediction.active_epoch);
+    assert_eq!(prediction.confidence, EpochConfidence::Tentative);
     assert!(prediction.pending.is_empty());
 }
 
@@ -98,22 +171,21 @@ fn acknowledgement_free_authority_clears_only_a_diverged_pending_projection() {
 fn matching_authority_confirms_visible_predictions_without_changing_projection() {
     let authoritative = state(b"a");
     let mut prediction = prediction(PredictionMode::Always);
-    prediction.active_epoch = true;
+    prediction.confidence = EpochConfidence::Confirmed;
     prediction
         .observe_input(3, b"b", &authoritative, 20)
         .unwrap();
     let displayed = prediction.display(&authoritative).clone();
 
-    prediction
-        .observe_authoritative(Some(3), &displayed)
-        .unwrap();
+    let confirmed = displayed.with_test_echo_acknowledgement(3);
+    prediction.observe_authoritative(&confirmed).unwrap();
 
-    assert!(prediction.active_epoch);
+    assert_eq!(prediction.confidence, EpochConfidence::Confirmed);
     assert!(prediction.pending.is_empty());
     assert!(
         prediction
-            .display(&displayed)
-            .display_equivalent(&displayed)
+            .display(&confirmed)
+            .display_equivalent(&confirmed)
     );
 }
 
@@ -121,18 +193,18 @@ fn matching_authority_confirms_visible_predictions_without_changing_projection()
 fn one_divergence_or_control_input_clears_the_visible_projection() {
     let authoritative = state(b"a");
     let mut prediction = prediction(PredictionMode::Always);
-    prediction.active_epoch = true;
+    prediction.confidence = EpochConfidence::Confirmed;
     prediction
         .observe_input(3, b"b", &authoritative, 20)
         .unwrap();
 
     prediction
-        .observe_authoritative(Some(3), &state(b"x"))
+        .observe_authoritative(&state_with_acknowledgement(b"x", 3))
         .unwrap();
-    assert!(!prediction.active_epoch);
+    assert_eq!(prediction.confidence, EpochConfidence::Tentative);
     assert!(prediction.pending.is_empty());
 
-    prediction.active_epoch = true;
+    prediction.confidence = EpochConfidence::Confirmed;
     prediction
         .observe_input(4, b"c", &authoritative, 30)
         .unwrap();
@@ -141,12 +213,12 @@ fn one_divergence_or_control_input_clears_the_visible_projection() {
             .observe_input(5, b"\x7f", &authoritative, 31)
             .unwrap()
     );
-    assert!(!prediction.active_epoch);
+    assert_eq!(prediction.confidence, EpochConfidence::Tentative);
     assert!(prediction.pending.is_empty());
 }
 
 #[test]
-fn paste_and_additional_tentative_input_are_never_speculated() {
+fn paste_clears_all_tentative_candidates() {
     let authoritative = state(b"a");
     let mut prediction = prediction(PredictionMode::Always);
 
@@ -160,7 +232,7 @@ fn paste_and_additional_tentative_input_are_never_speculated() {
             .observe_input(3, b"c", &authoritative, 11)
             .unwrap()
     );
-    assert_eq!(prediction.pending.len(), 1);
+    assert_eq!(prediction.pending.len(), 2);
     assert!(
         !prediction
             .observe_input(4, b"pasted", &authoritative, 12)
@@ -173,7 +245,7 @@ fn paste_and_additional_tentative_input_are_never_speculated() {
 fn erase_and_mixed_input_never_enter_the_projection() {
     let authoritative = state(b"prompt> ");
     let mut prediction = prediction(PredictionMode::Always);
-    prediction.active_epoch = true;
+    prediction.confidence = EpochConfidence::Confirmed;
 
     assert!(
         prediction
@@ -181,7 +253,7 @@ fn erase_and_mixed_input_never_enter_the_projection() {
             .unwrap()
     );
     prediction
-        .observe_authoritative(Some(1), &authoritative)
+        .observe_authoritative(&state_with_acknowledgement(b"prompt> ", 1))
         .unwrap();
     assert!(
         prediction
@@ -195,14 +267,14 @@ fn erase_and_mixed_input_never_enter_the_projection() {
             .unwrap()
     );
     assert!(prediction.pending.is_empty());
-    assert!(!prediction.active_epoch);
+    assert_eq!(prediction.confidence, EpochConfidence::Tentative);
     assert!(
         prediction
             .display(&authoritative)
             .display_equivalent(&authoritative)
     );
 
-    prediction.active_epoch = true;
+    prediction.confidence = EpochConfidence::Confirmed;
     assert!(
         prediction
             .observe_input(4, b"b", &authoritative, 12)
@@ -214,9 +286,9 @@ fn erase_and_mixed_input_never_enter_the_projection() {
             .unwrap()
     );
     assert!(prediction.pending.is_empty());
-    assert!(!prediction.active_epoch);
+    assert_eq!(prediction.confidence, EpochConfidence::Tentative);
 
-    prediction.active_epoch = true;
+    prediction.confidence = EpochConfidence::Confirmed;
     assert!(
         prediction
             .observe_input(6, b"c", &authoritative, 14)
@@ -228,7 +300,7 @@ fn erase_and_mixed_input_never_enter_the_projection() {
             .unwrap()
     );
     assert!(prediction.pending.is_empty());
-    assert!(!prediction.active_epoch);
+    assert_eq!(prediction.confidence, EpochConfidence::Tentative);
     assert!(
         prediction
             .display(&authoritative)
@@ -240,7 +312,7 @@ fn erase_and_mixed_input_never_enter_the_projection() {
 fn prediction_age_and_capacity_are_bounded() {
     let authoritative = state(b"");
     let mut prediction = prediction(PredictionMode::Always);
-    prediction.active_epoch = true;
+    prediction.confidence = EpochConfidence::Confirmed;
 
     for state in 1..=MAX_PENDING_PREDICTION_SCALARS {
         assert!(
@@ -255,9 +327,9 @@ fn prediction_age_and_capacity_are_bounded() {
             .unwrap()
     );
     assert!(prediction.pending.is_empty());
-    assert!(!prediction.active_epoch);
+    assert_eq!(prediction.confidence, EpochConfidence::Tentative);
 
-    prediction.active_epoch = true;
+    prediction.confidence = EpochConfidence::Confirmed;
     prediction
         .observe_input(34, b"x", &authoritative, 20)
         .unwrap();
@@ -290,7 +362,7 @@ fn never_keeps_only_authoritative_display_state() {
 fn adaptive_uses_slow_link_hysteresis_without_retracting_visible_input() {
     let authoritative = state(b"prompt> ");
     let mut prediction = prediction(PredictionMode::Adaptive);
-    prediction.active_epoch = true;
+    prediction.confidence = EpochConfidence::Confirmed;
 
     assert!(
         !prediction
@@ -307,10 +379,8 @@ fn adaptive_uses_slow_link_hysteresis_without_retracting_visible_input() {
 
     assert!(!prediction.update_policy(11, Some(25)));
     assert!(!prediction.update_policy(12, Some(20)));
-    let confirmed = state(b"prompt> a");
-    prediction
-        .observe_authoritative(Some(2), &confirmed)
-        .unwrap();
+    let confirmed = state_with_acknowledgement(b"prompt> a", 2);
+    prediction.observe_authoritative(&confirmed).unwrap();
     assert!(!prediction.update_policy(13, Some(20)));
 
     assert!(!prediction.observe_input(3, b"b", &confirmed, 14).unwrap());
@@ -325,7 +395,7 @@ fn adaptive_uses_slow_link_hysteresis_without_retracting_visible_input() {
 fn adaptive_temporarily_displays_a_prediction_during_a_glitch() {
     let authoritative = state(b"prompt> ");
     let mut prediction = prediction(PredictionMode::Adaptive);
-    prediction.active_epoch = true;
+    prediction.confidence = EpochConfidence::Confirmed;
 
     assert!(
         !prediction
@@ -341,10 +411,48 @@ fn adaptive_temporarily_displays_a_prediction_during_a_glitch() {
             .display_equivalent(&state(b"prompt> a"))
     );
 
-    let confirmed = state(b"prompt> a");
-    prediction
-        .observe_authoritative(Some(2), &confirmed)
-        .unwrap();
+    let confirmed = state_with_acknowledgement(b"prompt> a", 2);
+    prediction.observe_authoritative(&confirmed).unwrap();
     assert!(!prediction.update_policy(351, Some(20)));
     assert!(!prediction.observe_input(3, b"b", &confirmed, 352).unwrap());
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(64))]
+
+    #[test]
+    fn ordered_host_effect_prefixes_and_lagging_acknowledgements_confirm(
+        bytes in prop::collection::vec(0x20_u8..0x7f, 1..17),
+        acknowledgement_selector in 0_usize..16,
+    ) {
+        let base = state(b"");
+        let mut prediction = prediction(PredictionMode::Always);
+        for (index, byte) in bytes.iter().enumerate() {
+            prediction
+                .observe_input(
+                    u64::try_from(index).unwrap() + 2,
+                    &[*byte],
+                    &base,
+                    u64::try_from(index).unwrap(),
+                )
+                .unwrap();
+        }
+
+        for prefix in 0..=bytes.len() {
+            prediction.observe_authoritative(&state(&bytes[..prefix])).unwrap();
+            prop_assert_eq!(prediction.pending.len(), bytes.len());
+            prop_assert_eq!(prediction.confidence, EpochConfidence::Tentative);
+        }
+
+        let acknowledged = acknowledgement_selector % bytes.len() + 1;
+        let acknowledgement = u64::try_from(acknowledged).unwrap() + 1;
+        prediction
+            .observe_authoritative(
+                &state(&bytes).with_test_echo_acknowledgement(acknowledgement),
+            )
+            .unwrap();
+
+        prop_assert_eq!(prediction.confidence, EpochConfidence::Confirmed);
+        prop_assert!(prediction.pending.is_empty());
+    }
 }

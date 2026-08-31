@@ -2,7 +2,7 @@
 
 > Baseline: stock Mosh 1.4.0, IPv4, fixed server endpoint, protocol version 2
 >
-> Review date: 2026-08-30
+> Review date: 2026-08-31
 
 This map links each retained risk to evidence that the project owns. It does
 not turn unsupported behavior into a compatibility claim.
@@ -30,7 +30,7 @@ not turn unsupported behavior into a compatibility claim.
 | RTT, timestamps, pacing, retransmission, and heartbeat | U, M, F, S | `src/timing/tests.rs`, `state_transitions`, recovery fixtures | Published deadlines, wrap, suspension jumps, failure atomicity, and roaming recovery covered. Timers do not own cancellation. |
 | Terminal decode and authoritative state | U, P, F, S | `src/terminal/mod.rs`, `src/terminal/state.rs` | Generated chunk convergence, Unicode and combining bounds, malformed VT, resize, modes, system-effect isolation, and operation limits covered. |
 | Full and incremental repaint | U, S | `src/terminal/paint.rs`, stock tmux and Vim fixtures | Repaint convergence, size changes, output limits, and independently designed sparse-blank-row regression covered. xterm.js comparison belongs to the LeanTTY slice. |
-| Bounded local prediction | U, M, C, S | `src/prediction/tests.rs`, `tests/session.rs`, stock latency, full-loss, and isolation fixtures | Confirmation, divergence, expiry, capacity, conservative input classes, standard default, all three modes, adaptive hysteresis and glitch timing, per-Session ownership, latency, total UDP loss after public confirmation, and authoritative recovery convergence covered. Broader shell prediction and user-space echo confirmation are outside scope. |
+| Bounded local prediction | U, P, M, C, S | `src/prediction/tests.rs`, `src/terminal/state.rs`, `tests/session.rs`, stock latency, full-loss, and isolation fixtures | Retained monotonic echo watermark, HostBytes/ACK order independence, all ordered prefixes in generated candidate sequences, confirmation, divergence, expiry, capacity, conservative input classes, standard default, all three modes, adaptive hysteresis and glitch timing, per-Session ownership, latency, total UDP loss after public confirmation, and authoritative recovery convergence covered. Broader shell prediction and user-space echo confirmation are outside scope. |
 | Session commands, output, lifecycle, and isolation | U, C, S | `tests/session.rs`, `src/session/tests`, stock close and isolation fixtures | Exact command bounds, idempotent graceful close, reserved-state isolation, dropped-close retransmission, bounded no-ACK completion, authenticated local and remote outcomes, final-output drain, cancellation during receive, timer, and output waits, owner drop, backpressure, late packets, recovery, and two-Session isolation covered. A concrete UDP socket keeps kernel send waits outside deterministic injection; per-fragment cancellation plus stock active-session cancellation cover that residual path without a transport abstraction. |
 
 ## External defect classes

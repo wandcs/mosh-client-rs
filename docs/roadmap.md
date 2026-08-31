@@ -271,16 +271,30 @@ echo, a stock interactive shell, and a controlled 40 ms delay in each direction.
 Every `Always` warmup byte still waited roughly one round trip. Native Session
 output already contained that delay; N-API, ArkTS, and rendering added only a
 few milliseconds. Code review and a deterministic failing regression identified
-the library defect: any authenticated terminal update without a new echo
-acknowledgement cleared the confirmed epoch, even though absence of a repeated
-acknowledgement is not a prediction mismatch. The bounded fix preserves an idle
-confirmed epoch and an unchanged pending base, while still clearing a pending
-projection on actual authoritative divergence.
+an initial library defect: an authenticated terminal update without a new echo
+acknowledgement cleared the confirmed epoch. The first bounded fix preserved an
+idle confirmed epoch and an unchanged pending base.
+
+Later LeanTTY evidence and an end-to-end predictor review showed that fix was
+too narrow. HostBytes could reflect a tentative candidate before its echo
+acknowledgement arrived, and the predictor recorded only the first tentative
+input. Both are legal ordered-state progress, not divergence. Scheme B keeps
+the public modes, ASCII eligibility, limits, and authoritative display contract
+unchanged while making confirmation independent of operation batching:
 
 - [x] Prove through the public Session contract that a confirmed `Always` epoch
   survives complete UDP loss while `Never` stays authoritative-only.
-- [x] Reproduce and fix the acknowledgement-free epoch reset with deterministic
-  state-machine coverage and the existing stock latency and full-loss fixtures.
+- [x] Reproduce and fix the acknowledgement-free idle-epoch reset with
+  deterministic state-machine coverage.
+- [x] Retain one monotonic echo-acknowledgement watermark in authoritative
+  terminal state; do not retain history or expose a new public state.
+- [x] Record all bounded tentative candidates and reconcile authority against
+  the longest matching prefix from one shared base.
+- [x] Cover HostBytes-before-ACK, authority leading ACK, ACK without its host
+  effect, multiple tentative inputs, divergence, and 64 generated ordered
+  candidate sequences.
+- [x] Rerun the stock latency and full-loss fixtures plus the complete local
+  verification gate for the order-independent implementation.
 - [ ] Pin the fixed revision in LeanTTY and prove on ARM64 that at least one
   post-confirmation `Always` byte is visible before the 40 ms one-way delay.
 

@@ -24,15 +24,25 @@ heuristic system.
 Add one private, bounded prediction projection beside the authoritative
 terminal state.
 
-- The first eligible character in an epoch remains hidden until the stock
-  server's echo acknowledgement names its client state and the resulting
-  authoritative screen exactly matches the expected projection.
+- Every eligible character in a tentative epoch is recorded within the same
+  bounds, but remains hidden until the stock server confirms the epoch.
+- The authoritative terminal state retains the latest monotonic echo
+  acknowledgement. Host display effects and acknowledgement progress may
+  arrive in different authenticated differences; neither operation is treated
+  as a batch-local signal.
+- For each authoritative screen, replay the bounded candidate queue from its
+  shared base and find the longest display-equivalent prefix. A matching base
+  or prefix preserves the tentative epoch while acknowledgement lags.
+- An acknowledgement confirms the epoch only when it covers at least one
+  candidate and does not advance beyond the longest matching prefix. On
+  confirmation, remove every candidate already reflected by authority,
+  including a later prefix whose acknowledgement has not caught up yet.
+- No matching prefix, or acknowledgement progress beyond the matching host
+  effect, is a divergence and clears the epoch immediately.
 - After that confirmation, later single-byte printable ASCII input in the same
   epoch may be painted immediately.
 - An authenticated terminal update that carries no newer echo acknowledgement
-  does not by itself revoke the confirmed epoch. If a projection is pending,
-  an unchanged authoritative base preserves it; an actual display mismatch
-  still clears it immediately.
+  does not by itself revoke a confirmed epoch.
 - Control input, escape sequences, backspace, paste, resize, one divergence,
   capacity exhaustion, or age expiry clears the projection and ends the epoch.
 - The authoritative terminal state is never mutated by prediction. A matching
@@ -52,8 +62,13 @@ terminal state.
 
 The stock 1.4.0 black-box fixture independently confirmed that controlled
 client state 2 produces both transport acknowledgement 2 and terminal echo
-acknowledgement 2. A second fixture compares independent non-predictive and
-predictive Sessions under the same relay:
+acknowledgement 2. Deterministic regressions additionally cover HostBytes
+arriving before acknowledgement, multiple tentative inputs, authority leading
+acknowledgement by several candidate effects, and acknowledgement advancing
+without its expected effect. A generated 64-case sequence property checks all
+ordered authoritative prefixes for up to 16 printable bytes. A second stock
+fixture compares independent non-predictive and predictive Sessions under the
+same relay:
 
 | One-way delay | Non-predictive median | Predictive hot-epoch median |
 | ---: | ---: | ---: |
@@ -76,10 +91,13 @@ architecture comparisons, not wire authority or source material.
 
 One prediction base, one projected screen, and one emitted display snapshot are
 retained because the last visible state may differ from SSP history. The
-authoritative SSP snapshot set remains unchanged and bounded separately.
+authoritative SSP snapshot also owns one optional echo-acknowledgement watermark;
+there is no acknowledgement history or screen per candidate. All retained
+state remains bounded separately.
 
-The first character after an epoch reset still pays network latency. Unicode,
-backspace, pasted text, control sequences, and speculative editing remain
-unpredicted. Extend eligibility only after a separate correctness and value
-case; rollback consists of removing the private projection while preserving
-the Session and VT contracts.
+A tentative epoch still pays network latency until the first authenticated
+matching effect and acknowledgement establish confidence. Unicode, backspace,
+pasted text, control sequences, and speculative editing remain unpredicted.
+Extend eligibility only after a separate correctness and value case; rollback
+consists of removing the private projection while preserving the Session and VT
+contracts.

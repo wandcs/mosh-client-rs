@@ -84,8 +84,9 @@ error occurs. A graceful close reserves no ordinary SSP history entry for
 | Pending predicted scalars | 32 printable ASCII scalars | Clear prediction and end the epoch before adding another |
 | Pending predicted bytes | 32 bytes | Clear prediction and end the epoch before adding another |
 | Prediction age | 10 s from the oldest pending scalar | Clear projection and repaint from authority |
-| Prediction divergence | One mismatch | Clear projection and end the epoch immediately |
+| Prediction divergence | No candidate prefix matches, or ACK advances beyond its host effect | Clear projection and end the epoch immediately |
 | Prediction screen snapshots | One base, one projection, one last-painted snapshot | Replace or clear; never retain one screen per scalar |
+| Echo acknowledgement retained by terminal authority | One latest monotonic value | Replace on advance; reject decrease; never retain history |
 | Adaptive slow-link display | Enable above 30 ms frame interval; disable at or below 20 ms | Retain the current choice in between and never retract a visible projection |
 | Adaptive glitch display | 250 ms pending eligible projection | Temporarily display that projection; confirmation still comes only from the server |
 
@@ -95,7 +96,8 @@ authoritative or force the Session to retain old terminal states.
 Prediction never mutates authoritative terminal state. Its age limit clears
 stale display state; it does not classify an echo as correct or incorrect. The
 adaptive thresholds are internal display policy, not additional wire timers or
-publicly configurable limits.
+publicly configurable limits. Candidate-prefix replay is bounded by the same 32
+pending scalars and uses the one retained base rather than per-scalar screens.
 
 ## Timers
 

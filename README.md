@@ -11,8 +11,9 @@ output. A separate latest-value reachability contract reports missing recent
 contact or reply without treating network silence as close. Phase 2
 includes SSP synchronization, timing and recovery scheduling, bounded fragment
 reassembly, authoritative terminal state, VT painting, and a Session
-driver with bounded confirmed-epoch ASCII prediction. A local stock
-`mosh-server` 1.4.0 fixture completed an interactive shell exchange from
+driver with bounded confirmed-epoch ASCII prediction whose HostBytes and echo
+acknowledgement reconciliation is independent of difference batching. A local
+stock `mosh-server` 1.4.0 fixture completed an interactive shell exchange from
 bootstrap through prompt, input, output, full repaint, and cancellation.
 Additional loopback fixtures cover tmux attach, two-window
 navigation, detach and reattach, a Vim full-screen edit and repaint, 128 ordered

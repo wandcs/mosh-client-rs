@@ -295,20 +295,25 @@ in the SSP-indexed terminal-state map. Prediction retains at most 32 single-byte
 printable ASCII records, one base screen, one projected screen, and one emitted
 display snapshot. It does not retain one screen per character.
 
-A new epoch begins tentatively. Its first character remains hidden until a
-stock echo acknowledgement names that client state and the authoritative screen
-exactly matches the expectation. Later eligible characters in the confirmed
-epoch may be painted immediately. A matching authenticated update removes the
-projection without a visible correction. Control input, resize, paste,
-backspace, escape sequences, divergence, capacity exhaustion, or ten seconds of
-age clears it and returns painting to authority.
+A new epoch begins tentatively. Every eligible character is recorded within the
+same queue bounds, but remains hidden. The authoritative terminal state retains
+the latest monotonic echo-acknowledgement watermark across later differences.
+HostBytes and acknowledgement progress therefore may arrive in either order.
 
-Echo acknowledgement is progress carried by a terminal difference, not a
-requirement that every later authenticated difference repeat the last value.
-An update without a newer echo acknowledgement therefore preserves a confirmed
-idle epoch. While a projection is pending, it is also neutral only when the
-authoritative screen still matches the projection's base; a changed screen is
-a real divergence and clears the projection.
+For every authoritative screen, prediction replays the bounded candidate queue
+from its shared base and finds the longest display-equivalent prefix. A matching
+base or prefix preserves the epoch while acknowledgement lags. An
+acknowledgement confirms the epoch only when it covers at least one candidate
+without advancing beyond that matching prefix. Confirmation removes every
+candidate already reflected by authority, even when authority is ahead of the
+watermark, then rebases any remaining suffix. Later eligible characters in the
+confirmed epoch may be painted immediately.
+
+No matching candidate prefix, or acknowledgement progress beyond its matching
+host effect, is a divergence. It clears the projection and returns painting to
+authority. Control input, resize, paste, backspace, escape sequences, capacity
+exhaustion, or ten seconds of age does the same. An update without a newer echo
+acknowledgement does not by itself revoke a confirmed idle epoch.
 
 The age limit bounds stale speculative display and memory; it never declares a
 prediction correct. `Never` omits the projection, `Always` displays eligible

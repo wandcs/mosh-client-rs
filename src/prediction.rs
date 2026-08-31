@@ -26,10 +26,16 @@ struct PendingPrediction {
     byte: u8,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum EpochConfidence {
+    Tentative,
+    Confirmed,
+}
+
 #[derive(Debug)]
 pub(crate) struct LocalPrediction {
     mode: PredictionMode,
-    active_epoch: bool,
+    confidence: EpochConfidence,
     adaptive_slow_link: bool,
     adaptive_glitch: bool,
     pending: VecDeque<PendingPrediction>,
@@ -41,7 +47,7 @@ impl LocalPrediction {
     pub(crate) const fn new(mode: PredictionMode) -> Self {
         Self {
             mode,
-            active_epoch: false,
+            confidence: EpochConfidence::Tentative,
             adaptive_slow_link: false,
             adaptive_glitch: false,
             pending: VecDeque::new(),
@@ -64,9 +70,6 @@ impl LocalPrediction {
             return Ok(self.clear());
         };
 
-        if !self.active_epoch && !self.pending.is_empty() {
-            return Ok(false);
-        }
         if self.pending.len() == MAX_PENDING_PREDICTION_SCALARS
             || self.pending.len() == MAX_PENDING_PREDICTION_BYTES
         {
@@ -94,49 +97,32 @@ impl LocalPrediction {
 
     pub(crate) fn observe_authoritative(
         &mut self,
-        echo_acknowledgement: Option<u64>,
         authoritative: &TerminalState,
     ) -> Result<(), TerminalError> {
-        if self.mode == PredictionMode::Never {
-            return Ok(());
-        }
-        let Some(echo_acknowledgement) = echo_acknowledgement else {
-            // The acknowledgement is an operation in this difference, so its
-            // absence is neutral unless authority invalidates a pending base.
-            if self.pending.is_empty()
-                || self
-                    .base
-                    .as_ref()
-                    .is_some_and(|base| authoritative.display_equivalent(base))
-            {
-                return Ok(());
-            }
-            self.clear();
-            return Ok(());
-        };
-        let Some(confirmed_index) = self
-            .pending
-            .iter()
-            .rposition(|prediction| prediction.client_state <= echo_acknowledgement)
-        else {
-            return Ok(());
-        };
-
-        let mut expected = self
-            .base
-            .as_ref()
-            .expect("pending prediction owns a base")
-            .clone();
-        for prediction in self.pending.iter().take(confirmed_index + 1) {
-            expected = expected.with_predicted_ascii(prediction.byte)?;
-        }
-        if !authoritative.display_equivalent(&expected) {
-            self.clear();
+        if self.mode == PredictionMode::Never || self.pending.is_empty() {
             return Ok(());
         }
 
-        self.active_epoch = true;
-        self.pending.drain(..=confirmed_index);
+        let Some(matched_prefix) = self.longest_matching_prefix(authoritative)? else {
+            self.clear();
+            return Ok(());
+        };
+        let acknowledged_prefix = authoritative.echo_acknowledgement().map_or(0, |number| {
+            self.pending
+                .iter()
+                .take_while(|prediction| prediction.client_state <= number)
+                .count()
+        });
+        if acknowledged_prefix > matched_prefix {
+            self.clear();
+            return Ok(());
+        }
+        if acknowledged_prefix == 0 {
+            return Ok(());
+        }
+
+        self.confidence = EpochConfidence::Confirmed;
+        self.pending.drain(..matched_prefix);
         if self.pending.is_empty() {
             self.base = None;
             self.projected = None;
@@ -163,7 +149,7 @@ impl LocalPrediction {
     pub(crate) fn next_deadline_ms(&self) -> Option<u64> {
         let expiry = self.expiration_deadline_ms();
         let glitch = if self.mode == PredictionMode::Adaptive
-            && self.active_epoch
+            && self.confidence == EpochConfidence::Confirmed
             && !self.adaptive_slow_link
             && !self.adaptive_glitch
         {
@@ -219,7 +205,7 @@ impl LocalPrediction {
         }
         if self.pending.is_empty() {
             self.adaptive_glitch = false;
-        } else if self.active_epoch
+        } else if self.confidence == EpochConfidence::Confirmed
             && self.pending.front().is_some_and(|prediction| {
                 now_ms
                     >= prediction
@@ -233,7 +219,7 @@ impl LocalPrediction {
     }
 
     fn displaying_prediction(&self) -> bool {
-        self.active_epoch
+        self.confidence == EpochConfidence::Confirmed
             && !self.pending.is_empty()
             && match self.mode {
                 PredictionMode::Adaptive => self.adaptive_slow_link || self.adaptive_glitch,
@@ -244,7 +230,7 @@ impl LocalPrediction {
 
     fn clear(&mut self) -> bool {
         let displayed_prediction = self.displaying_prediction();
-        self.active_epoch = false;
+        self.confidence = EpochConfidence::Tentative;
         self.adaptive_glitch = false;
         self.pending.clear();
         self.base = None;
@@ -254,6 +240,27 @@ impl LocalPrediction {
 
     pub(crate) fn reset(&mut self) -> bool {
         self.clear()
+    }
+
+    fn longest_matching_prefix(
+        &self,
+        authoritative: &TerminalState,
+    ) -> Result<Option<usize>, TerminalError> {
+        let mut expected = self
+            .base
+            .as_ref()
+            .expect("pending prediction owns a base")
+            .clone();
+        let mut matched_prefix = expected
+            .display_equivalent(authoritative)
+            .then_some(0_usize);
+        for (index, prediction) in self.pending.iter().enumerate() {
+            expected = expected.with_predicted_ascii(prediction.byte)?;
+            if expected.display_equivalent(authoritative) {
+                matched_prefix = Some(index + 1);
+            }
+        }
+        Ok(matched_prefix)
     }
 }
 

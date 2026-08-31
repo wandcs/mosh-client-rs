@@ -73,7 +73,7 @@ ownership without removing duplication. The
 | Authenticated UDP safety | Standard primitive vectors, correct/wrong keys, corruption, replay, sequence and address-change tests |
 | Recovery and roaming | Deterministic loss/delay/reorder matrix plus real interruption and address-change acceptance |
 | Terminal correctness | Unicode, width, combining, cursor, color, resize, alternate screen, sustained I/O and independent renderer comparison |
-| Bounded local prediction | Deterministic confirmed/diverged predictions, three public modes, adaptive hysteresis and glitch timing, Session isolation, epoch reset, control and paste rejection, limits, stock echo-ACK mapping and comparative latency |
+| Bounded local prediction | Deterministic confirmed/diverged predictions, retained monotonic echo watermark, HostBytes/ACK order independence, generated candidate-prefix sequences, three public modes, adaptive hysteresis and glitch timing, Session isolation, control and paste rejection, limits, stock echo-ACK mapping and comparative latency |
 | Small portable library | Linux host build, ARM64 HarmonyOS build, dependency audit and no remote runtime service |
 | Session isolation | Two concurrent Sessions with distinct keys, sockets, timers, terminal states, events, graceful close and cancellation |
 | LeanTTY value | Side-by-side SSH/Mosh scenarios under normal, interrupted, roaming, lock, sleep, UDP block and recovery conditions |
@@ -200,6 +200,13 @@ Cover:
 - shell prompts, sustained output and control characters;
 - control input, paste, backspace and resize without prediction; and
 - every terminal-state, line, cell and repaint limit.
+
+Prediction state-machine tests separately cover HostBytes arriving before its
+echo acknowledgement, acknowledgement-free authoritative prefixes, authority
+leading the watermark across multiple candidates, acknowledgement advancing
+without its expected host effect, and monotonic watermark retention. A bounded
+property generates up to 16 printable candidates and checks every ordered
+authoritative prefix before a lagging acknowledgement confirms the epoch.
 
 The `Never`, `Always`, and `Adaptive` stock Sessions run against independent
 servers through the same fixed-delay relay. The fixture proves echo-ACK mapping,

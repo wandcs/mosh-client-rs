@@ -559,7 +559,6 @@ impl SessionDriver {
                 .get(&plan.base_state)
                 .ok_or(DriverError::MissingTerminalState)?;
             let difference = TerminalDifference::decode(plan.difference)?;
-            let echo_acknowledgement = difference.latest_echo_acknowledgement();
             let next = base.apply(&difference)?;
             let target_state = plan.target_state;
             let commit = self.synchronization.commit_receive(plan)?;
@@ -574,8 +573,7 @@ impl SessionDriver {
                     .terminal_states
                     .get(&target_state)
                     .ok_or(DriverError::MissingTerminalState)?;
-                self.prediction
-                    .observe_authoritative(echo_acknowledgement, authoritative)?;
+                self.prediction.observe_authoritative(authoritative)?;
                 if *self.state_tx.borrow() == SessionState::Connecting {
                     self.state_tx.send_replace(SessionState::Active);
                 }

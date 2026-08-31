@@ -295,12 +295,12 @@ Author:
   and [stock loopback observation](fixtures/stock-1.4.0-loopback.md).
 - Observed version: unmodified Ubuntu `mosh-server` 1.4.0.
 - Implementation consequence: decode the three known operation shapes, apply
-  display operations in order to a cloned reference screen, and route echo
-  acknowledgements only to the separate prediction layer. Accept the three
-  verified reset-only policy sequences among otherwise unsupported CSI. A full
-  repaint emits the same resets before synthesized terminal state. The later
-  Vim fixture below adds one independently observed focus-reporting set
-  sequence.
+  them in order to a cloned reference state, and retain the latest monotonic
+  echo acknowledgement with that state for private prediction confirmation.
+  Accept the three verified reset-only policy sequences among otherwise
+  unsupported CSI. A full repaint emits the same resets before synthesized
+  terminal state. The later Vim fixture below adds one independently observed
+  focus-reporting set sequence.
 - Limits: the fixture controlled an 81×25 screen and the UTF-8 marker `A中Z`.
   It proved production decode, reference-state application, resize, wide-cell
   preservation, and stock initialization. It did not prove interactive shell,
@@ -524,32 +524,38 @@ Author:
   confirmation in a `stty -echo` user-space echo fixture or on LeanTTY's ARM64
   device path.
 
-### Confirmed epoch across acknowledgement-free terminal updates
+### Order-independent host effects and prediction acknowledgement
 
 - Date: 2026-08-31
-- Behavior: an authenticated terminal difference may carry no new echo
-  acknowledgement after an earlier difference confirmed the prediction epoch.
-  Absence of a repeated acknowledgement is not by itself a mismatch. A pending
-  projection remains valid only while the new authoritative screen still
-  matches its base.
+- Behavior: HostBytes reflecting eligible input and the terminal echo
+  acknowledgement for that input are independent operations. They may appear
+  in different authenticated differences. Absence of a repeated
+  acknowledgement is neutral, and authority may match any ordered prefix of
+  the bounded candidate queue while the watermark catches up.
 - Evidence class: project-controlled physical consumer experiment, independent
   code-path analysis, deterministic regression, and stock-server
   interoperability fixtures.
 - Source: [LeanTTY ARM64 prediction evidence](fixtures/leantty-arm64-prediction.md),
   `acknowledgement_free_authority_preserves_a_confirmed_idle_epoch`,
+  `host_effect_before_echo_acknowledgement_preserves_the_tentative_epoch`,
+  `tentative_epoch_records_input_beyond_the_first_candidate`,
+  `acknowledgement_that_outpaces_host_effect_clears_candidates`,
+  `ordered_host_effect_prefixes_and_lagging_acknowledgements_confirm`,
   `acknowledgement_free_authority_clears_only_a_diverged_pending_projection`,
   `stock_1_4_0_prediction_modes_preserve_convergence_and_adapt_to_latency`, and
   `stock_1_4_0_public_prediction_survives_total_udp_loss_after_confirmation`.
-- Observed versions: `mosh-client-rs` at `ba4b649` before the fix, unmodified
-  stock `mosh-server` 1.4.0 on Ubuntu 26.04 WSL x86-64, and one physical ARM64
-  HarmonyOS LeanTTY slice.
-- Implementation consequence: keep a confirmed idle epoch across a terminal
-  update with no new echo acknowledgement. If eligible input is pending, keep
-  it only when authority remains display-equivalent to the stored base; clear
-  on a real display mismatch. Do not add a timeout, public state, retained ACK
-  history, or consumer callback.
-- Limits: the deterministic test proves the state-machine defect and the stock
-  fixtures prove convergence and loss behavior after the fix. The physical run
-  did not retain an internal acknowledgement trace, so LeanTTY must pin the
-  fixed revision and repeat the ARM64 latency fixture before attributing the
-  entire device symptom to this one defect.
+- Observed versions: `mosh-client-rs` at `ba4b649` and `383b10a` before the two
+  successive fixes, unmodified stock `mosh-server` 1.4.0 on Ubuntu 26.04 WSL
+  x86-64, and one physical ARM64 HarmonyOS LeanTTY slice.
+- Implementation consequence: the authoritative terminal state retains one
+  latest monotonic echo-acknowledgement watermark. Prediction replays at most
+  32 candidates from one base to find the longest matching prefix. A watermark
+  that covers a matching candidate confirms the epoch; authority may lead it.
+  No matching prefix, or a watermark that advances beyond its host effect,
+  clears the epoch. Do not add a timeout, public state, acknowledgement history,
+  per-candidate screens, or consumer callback.
+- Limits: deterministic regressions and generated ordered-prefix cases prove
+  the state-machine contract; stock fixtures prove convergence and loss
+  behavior. The physical run did not retain an internal acknowledgement trace,
+  so LeanTTY must pin this revision and repeat the ARM64 latency fixture before
+  treating the device symptom as closed.
