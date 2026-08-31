@@ -303,6 +303,13 @@ projection without a visible correction. Control input, resize, paste,
 backspace, escape sequences, divergence, capacity exhaustion, or ten seconds of
 age clears it and returns painting to authority.
 
+Echo acknowledgement is progress carried by a terminal difference, not a
+requirement that every later authenticated difference repeat the last value.
+An update without a newer echo acknowledgement therefore preserves a confirmed
+idle epoch. While a projection is pending, it is also neutral only when the
+authoritative screen still matches the projection's base; a changed screen is
+a real divergence and clears the projection.
+
 The age limit bounds stale speculative display and memory; it never declares a
 prediction correct. `Never` omits the projection, `Always` displays eligible
 confirmed-epoch input, and the standard `Adaptive` default displays it only

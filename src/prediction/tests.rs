@@ -44,6 +44,57 @@ fn first_prediction_stays_hidden_until_stock_echo_confirmation() {
 }
 
 #[test]
+fn acknowledgement_free_authority_preserves_a_confirmed_idle_epoch() {
+    let authoritative = state(b"prompt> ");
+    let mut prediction = prediction(PredictionMode::Always);
+
+    assert!(
+        !prediction
+            .observe_input(2, b"a", &authoritative, 10)
+            .unwrap()
+    );
+    let confirmed = state(b"prompt> a");
+    prediction
+        .observe_authoritative(Some(2), &confirmed)
+        .unwrap();
+    assert!(prediction.active_epoch);
+
+    prediction.observe_authoritative(None, &confirmed).unwrap();
+
+    assert!(prediction.active_epoch);
+    assert!(prediction.observe_input(3, b"b", &confirmed, 20).unwrap());
+}
+
+#[test]
+fn acknowledgement_free_authority_clears_only_a_diverged_pending_projection() {
+    let authoritative = state(b"prompt> ");
+    let mut prediction = prediction(PredictionMode::Always);
+    prediction.active_epoch = true;
+    assert!(
+        prediction
+            .observe_input(2, b"a", &authoritative, 10)
+            .unwrap()
+    );
+
+    prediction
+        .observe_authoritative(None, &authoritative)
+        .unwrap();
+    assert!(prediction.active_epoch);
+    assert_eq!(prediction.pending.len(), 1);
+    assert!(
+        prediction
+            .display(&authoritative)
+            .display_equivalent(&state(b"prompt> a"))
+    );
+
+    prediction
+        .observe_authoritative(None, &state(b"changed"))
+        .unwrap();
+    assert!(!prediction.active_epoch);
+    assert!(prediction.pending.is_empty());
+}
+
+#[test]
 fn matching_authority_confirms_visible_predictions_without_changing_projection() {
     let authoritative = state(b"a");
     let mut prediction = prediction(PredictionMode::Always);

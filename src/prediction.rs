@@ -101,6 +101,16 @@ impl LocalPrediction {
             return Ok(());
         }
         let Some(echo_acknowledgement) = echo_acknowledgement else {
+            // The acknowledgement is an operation in this difference, so its
+            // absence is neutral unless authority invalidates a pending base.
+            if self.pending.is_empty()
+                || self
+                    .base
+                    .as_ref()
+                    .is_some_and(|base| authoritative.display_equivalent(base))
+            {
+                return Ok(());
+            }
             self.clear();
             return Ok(());
         };

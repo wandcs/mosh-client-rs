@@ -261,19 +261,28 @@ bounded library follow-up:
 - [x] Prove default selection, all modes, concurrent isolation, adaptive
   thresholds, resource bounds, and stock-server convergence.
 
-A later LeanTTY ARM64 run observed no `Always` output after its warmup and then
-blocked all UDP traffic, but its `stty -echo` user-space echo could not prove
-that stock echo acknowledgement had confirmed the epoch. A project-owned
-follow-up now uses normal stock PTY echo and only declares confirmation after
-observing predictive public VT output. It proves concurrent `Always` and
-`Never` behavior during complete bidirectional loss, packet drops, recovery,
-authoritative convergence, and isolation. The fixture passed without a
-production change; the remaining work is to correct the LeanTTY device fixture
-and inspect its integration boundary only if that corrected scenario still
-fails.
+A first LeanTTY ARM64 run used `stty -echo` and could not prove that stock echo
+acknowledgement had confirmed the epoch. A project-owned follow-up therefore
+used normal stock PTY echo and proved that a confirmed public `Always` epoch
+survives complete bidirectional loss while `Never` stays authoritative-only.
+
+The corrected LeanTTY ARM64 fixture then used the same public API, normal kernel
+echo, a stock interactive shell, and a controlled 40 ms delay in each direction.
+Every `Always` warmup byte still waited roughly one round trip. Native Session
+output already contained that delay; N-API, ArkTS, and rendering added only a
+few milliseconds. Code review and a deterministic failing regression identified
+the library defect: any authenticated terminal update without a new echo
+acknowledgement cleared the confirmed epoch, even though absence of a repeated
+acknowledgement is not a prediction mismatch. The bounded fix preserves an idle
+confirmed epoch and an unchanged pending base, while still clearing a pending
+projection on actual authoritative divergence.
 
 - [x] Prove through the public Session contract that a confirmed `Always` epoch
   survives complete UDP loss while `Never` stays authoritative-only.
+- [x] Reproduce and fix the acknowledgement-free epoch reset with deterministic
+  state-machine coverage and the existing stock latency and full-loss fixtures.
+- [ ] Pin the fixed revision in LeanTTY and prove on ARM64 that at least one
+  post-confirmation `Always` byte is visible before the 40 ms one-way delay.
 
 ### Phase 4 code-organization maintenance
 

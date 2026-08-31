@@ -29,6 +29,10 @@ terminal state.
   authoritative screen exactly matches the expected projection.
 - After that confirmation, later single-byte printable ASCII input in the same
   epoch may be painted immediately.
+- An authenticated terminal update that carries no newer echo acknowledgement
+  does not by itself revoke the confirmed epoch. If a projection is pending,
+  an unchanged authoritative base preserves it; an actual display mismatch
+  still clears it immediately.
 - Control input, escape sequences, backspace, paste, resize, one divergence,
   capacity exhaustion, or age expiry clears the projection and ends the epoch.
 - The authoritative terminal state is never mutated by prediction. A matching

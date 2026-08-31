@@ -523,3 +523,33 @@ Author:
   The full-loss fixture uses normal stock PTY kernel echo and does not prove
   confirmation in a `stty -echo` user-space echo fixture or on LeanTTY's ARM64
   device path.
+
+### Confirmed epoch across acknowledgement-free terminal updates
+
+- Date: 2026-08-31
+- Behavior: an authenticated terminal difference may carry no new echo
+  acknowledgement after an earlier difference confirmed the prediction epoch.
+  Absence of a repeated acknowledgement is not by itself a mismatch. A pending
+  projection remains valid only while the new authoritative screen still
+  matches its base.
+- Evidence class: project-controlled physical consumer experiment, independent
+  code-path analysis, deterministic regression, and stock-server
+  interoperability fixtures.
+- Source: [LeanTTY ARM64 prediction evidence](fixtures/leantty-arm64-prediction.md),
+  `acknowledgement_free_authority_preserves_a_confirmed_idle_epoch`,
+  `acknowledgement_free_authority_clears_only_a_diverged_pending_projection`,
+  `stock_1_4_0_prediction_modes_preserve_convergence_and_adapt_to_latency`, and
+  `stock_1_4_0_public_prediction_survives_total_udp_loss_after_confirmation`.
+- Observed versions: `mosh-client-rs` at `ba4b649` before the fix, unmodified
+  stock `mosh-server` 1.4.0 on Ubuntu 26.04 WSL x86-64, and one physical ARM64
+  HarmonyOS LeanTTY slice.
+- Implementation consequence: keep a confirmed idle epoch across a terminal
+  update with no new echo acknowledgement. If eligible input is pending, keep
+  it only when authority remains display-equivalent to the stored base; clear
+  on a real display mismatch. Do not add a timeout, public state, retained ACK
+  history, or consumer callback.
+- Limits: the deterministic test proves the state-machine defect and the stock
+  fixtures prove convergence and loss behavior after the fix. The physical run
+  did not retain an internal acknowledgement trace, so LeanTTY must pin the
+  fixed revision and repeat the ARM64 latency fixture before attributing the
+  entire device symptom to this one defect.
