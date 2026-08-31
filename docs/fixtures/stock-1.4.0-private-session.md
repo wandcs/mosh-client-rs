@@ -66,7 +66,11 @@ reattach. Vim's visible full-screen state survived a replacement-surface
 repaint, and exit restored the shell. The `xterm-256color` terminfo entry
 declares `CSI ?1049h`/`CSI ?1049l` for alternate-screen entry and exit, but the
 stock Session exposed the current visible Vim frame without preserving an
-alternate-screen flag in the client projection.
+alternate-screen flag in the client projection. The live projection and a
+replacement projection built from an explicit full repaint both remained on
+their local primary buffer. This characterizes the public output boundary; it
+does not make application-level alternate-screen transitions part of the
+Session contract.
 
 Vim also produced `CSI ?1004h` through the authenticated stock terminal state.
 The client suppresses this verified focus-reporting toggle because its current
@@ -91,8 +95,8 @@ server after success or failure.
 ## Limits
 
 The fixtures cover controlled local applications between 60×20 and 100×30.
-They do not prove focus-event delivery, mouse modes, local alternate-buffer
-history, concurrent Sessions, or HarmonyOS runtime behavior. Local outage, UDP
-source-port change, latency, and server-disappearance evidence is recorded
-separately in the
+They do not prove focus-event delivery, mouse modes, complete local scrollback,
+consumer-owned whole-Session isolation, concurrent Sessions, or HarmonyOS
+runtime behavior. Local outage, UDP source-port change, latency, and
+server-disappearance evidence is recorded separately in the
 [recovery fixture](stock-1.4.0-session-recovery.md).

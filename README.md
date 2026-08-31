@@ -59,6 +59,12 @@ initial attachment timeout, and
 [ADR 0010](docs/decisions/0010-public-prediction-modes.md) for the bounded
 prediction-mode contract.
 
+`Session::next_output` reconstructs the stock server's current visible screen;
+it is not a raw remote PTY stream. It does not report when a remote application
+enters or leaves an alternate screen, and it does not provide complete local
+scrollback. An embedding application that must restore its pre-Mosh terminal
+state should isolate the whole Session in a temporary terminal page.
+
 ## Goal
 
 Build a memory-safe Mosh client core that interoperates with the stock

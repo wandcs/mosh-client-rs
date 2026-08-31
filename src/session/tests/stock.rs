@@ -357,6 +357,10 @@ async fn exercise_vim(
         .await
         .expect("Session command queue closed before Vim input");
     wait_for_screen(output, projection, "EDITOR_SESSION_OK").await;
+    assert!(
+        !projection.screen().alternate_screen(),
+        "stock visible Vim state unexpectedly preserved the remote alternate-screen boundary"
+    );
 
     commands
         .send(SessionCommand::Repaint)
@@ -373,6 +377,10 @@ async fn exercise_vim(
             .screen()
             .contents()
             .contains("EDITOR_SESSION_OK")
+    );
+    assert!(
+        !replacement.screen().alternate_screen(),
+        "full repaint unexpectedly synthesized an application alternate-screen boundary"
     );
 
     commands

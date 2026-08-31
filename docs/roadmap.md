@@ -298,6 +298,26 @@ unchanged while making confirmation independent of operation batching:
 - [ ] Pin the fixed revision in LeanTTY and prove on ARM64 that at least one
   post-confirmation `Always` byte is visible before the 40 ms one-way delay.
 
+LeanTTY then reproduced MCRS-008: the public VT stream reconstructs the stock
+server's current visible screen but does not preserve a remote application's
+alternate-screen entry or exit boundary. This is a presentation-contract gap,
+not evidence for another terminal state machine or a new public mode value:
+
+- [x] State that public output represents the current visible screen and does
+  not provide SSH-equivalent application alternate-screen or scrollback
+  semantics.
+- [x] Keep whole-Session terminal initialization and restoration owned by the
+  embedding application; do not add output parsing, application detection, a
+  public cell model, or a second display protocol.
+- [x] Extend the existing stock Vim fixture to prove the bounded contract
+  across active display, explicit full repaint, and shell convergence after
+  exit.
+
+The MCRS-008 library batch is complete as of 2026-08-31. The stock 1.4.0 Vim
+fixture proves the visible-frame contract for live and replacement projections.
+LeanTTY still owns implementation and physical verification of whole-Session
+terminal-page isolation.
+
 ### Phase 4 code-organization maintenance
 
 Repeated consumer-driven additions have made two existing file boundaries

@@ -286,6 +286,13 @@ changing the compatibility profile. One verified exception suppresses Vim's
 focus-reporting toggle: the core neither forwards `CSI ?1004h` nor claims to
 send focus events, and a full repaint explicitly disables the mode.
 
+The stock server supplies the current visible framebuffer without a reliable
+remote-application alternate-screen boundary. Incremental output and a full
+repaint therefore reproduce the visible Vim or pager frame without asserting
+that the consumer projection entered an alternate screen. The library does not
+parse painted contents to guess application lifecycle, expose a synthetic mode,
+or retain a second presentation history.
+
 ### Bounded local prediction
 
 The measured Phase 2 latency gate admits one private prediction engine and ADR
@@ -350,6 +357,13 @@ scrollback accumulated by a terminal surface is useful but cannot become a
 promise of SSH-equivalent or persistent history. Durable work and authoritative
 history remain the responsibility of remote tools such as `tmux` or `screen`.
 
+A consumer that must preserve the terminal contents from before Mosh starts
+owns whole-Session isolation. It activates a temporary terminal page before the
+first Mosh output, applies every ordered chunk there, and restores the previous
+page only after final output handling and Session shutdown. This protects the
+consumer's primary history; it does not create complete scrollback inside the
+Mosh Session or reconstruct each remote application's screen transition.
+
 ## Output flow control
 
 Protocol flow and display flow remain separate:
@@ -394,6 +408,12 @@ lifecycle generation rejects late Session events; it is not a display revision.
 LeanTTY keeps the existing binary bridge, VT renderer, input, resize, search,
 selection, and system-effect validation. Mosh-specific integration adds an
 explicit repaint request, not a per-chunk completion path.
+
+LeanTTY also owns one temporary terminal page for the lifetime of each Mosh
+Session. It enters that page before delivering the first Mosh output and leaves
+it after ordered output draining and Session cleanup. It does not inspect VT
+paint to detect Vim, pagers, or other applications. This restores the pre-Mosh
+Pane contents without claiming complete scrollback within the Mosh Session.
 
 SSH and Mosh share the terminal surface but keep distinct delivery policies:
 

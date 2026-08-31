@@ -42,6 +42,12 @@ Mosh synchronizes visible terminal state, not complete shell history. Tests
 must record local scrollback behavior, recovery effects, and limitations without
 claiming SSH-equivalent or persistent history.
 
+The output stream also does not preserve a remote application's
+alternate-screen entry or exit boundary. A visible full-screen frame and an
+explicit repaint remain usable, but the consumer projection need not carry an
+alternate-screen flag. Consumers own any temporary terminal page used to
+isolate the whole Mosh Session from pre-existing local contents.
+
 ## Required evidence
 
 Before the compatibility claim expands, tests must cover:
@@ -64,7 +70,10 @@ Vim full-screen editing and repaint, ordered sustained input, sustained output,
 display backpressure, and cancellation. The interactive shell and repaint
 fixture drives the Phase 3 public Session API. Stock Mosh exposes the current
 visible Vim frame without requiring the local projection to retain the remote
-alternate-buffer flag. A test-only loopback relay proves recovery after a
+alternate-buffer flag. The fixture asserts that the live projection and a
+replacement projection rebuilt from a full repaint both remain on their local
+primary buffer, then converge to the shell after Vim exits. A test-only
+loopback relay proves recovery after a
 1.5-second bidirectional interruption and UDP source-port change; another test
 proves that server disappearance leaves the Session repaintable and
 cancellable. A Session fixture verifies remote PTY resize from 80×24

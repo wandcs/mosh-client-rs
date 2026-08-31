@@ -33,6 +33,16 @@ The initial public API does not expose terminal cells, a renderer trait, or a
 generic output plugin. A read-only screen snapshot remains a possible additive
 API after a real native-renderer consumer demonstrates the need.
 
+Public output reconstructs the stock server's current visible screen. It is not
+a raw remote PTY stream and does not preserve a remote application's
+alternate-screen entry or exit boundary. The Session does not infer that
+boundary from visible contents or expose an unsupported mode value.
+
+The embedding application owns terminal initialization and restoration around
+the whole Session. A consumer that must protect its pre-Mosh terminal state can
+activate a temporary terminal page before it writes the first output chunk and
+restore the previous page after Session output and shutdown are complete.
+
 The library owns one asynchronous Session future, UDP socket, timer set,
 protocol state, terminal state, and cancellation path per Session. The
 embedding application runs that future on its executor. The library does not
@@ -79,6 +89,8 @@ remote service.
   not pass remote or network bytes through as display bytes.
 - The painter needs compatibility tests against independent terminal emulators.
 - Complete scrollback remains outside the Mosh state contract.
+- Application-level alternate-screen transitions are not part of public
+  output. Whole-Session display isolation belongs to the consumer.
 - Native cell renderers must initially parse VT output or wait for a justified
   additive snapshot API.
 
