@@ -1,6 +1,8 @@
 use core::future::Future as _;
 use core::task::{Poll, ready};
 use std::collections::BTreeMap;
+#[cfg(test)]
+use std::collections::VecDeque;
 use std::future::poll_fn;
 use std::io::ErrorKind;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
@@ -17,8 +19,8 @@ use crate::instruction::{
     ClientOperation, InstructionError, PROTOCOL_VERSION, SHUTDOWN_STATE, TransportInstruction,
 };
 use crate::limits::{
-    GRACEFUL_CLOSE_ACK_TIMEOUT_MS, MAX_DATAGRAM_BYTES, MAX_FRAGMENT_BODY_BYTES,
-    PENDING_OUTPUT_CHUNKS, SESSION_COMMAND_QUEUE_CAPACITY,
+    GRACEFUL_CLOSE_ACK_TIMEOUT_MS, INITIAL_RETRANSMISSION_TIMEOUT_MS, MAX_DATAGRAM_BYTES,
+    MAX_FRAGMENT_BODY_BYTES, PENDING_OUTPUT_CHUNKS, SESSION_COMMAND_QUEUE_CAPACITY,
 };
 use crate::packet::{Direction, PacketCodec, PacketError, PacketReceiver, SendSequence};
 use crate::prediction::{LocalPrediction, PredictionMode};
@@ -173,6 +175,8 @@ pub(crate) struct SessionDriver {
     reachability: ReachabilityTracker,
     reachability_tx: watch::Sender<SessionReachability>,
     final_terminal: Option<TerminalState>,
+    #[cfg(test)]
+    send_outcomes: VecDeque<Option<ErrorKind>>,
 }
 
 impl SessionDriver {
@@ -234,6 +238,8 @@ impl SessionDriver {
                 reachability,
                 reachability_tx,
                 final_terminal: None,
+                #[cfg(test)]
+                send_outcomes: VecDeque::new(),
             },
             SessionChannels {
                 commands: command_tx,
@@ -418,11 +424,16 @@ impl SessionDriver {
             .client_history
             .difference(send_plan.base_state, send_plan.target_state)?;
         let instruction = send_plan.instruction(difference, INITIAL_CHAFF.to_vec());
-        if !self
+        match self
             .send_transport_instruction(&instruction, now_ms)
             .await?
         {
-            return Ok(());
+            TransportSendOutcome::Sent => {}
+            TransportSendOutcome::Cancelled => return Ok(()),
+            TransportSendOutcome::Deferred => {
+                self.defer_temporary_send(now_ms)?;
+                return Ok(());
+            }
         }
 
         let commit = self.synchronization.commit_send(send_plan)?;
@@ -437,7 +448,7 @@ impl SessionDriver {
         &mut self,
         instruction: &TransportInstruction,
         now_ms: u64,
-    ) -> Result<bool, DriverError> {
+    ) -> Result<TransportSendOutcome, DriverError> {
         let compressed = instruction.encode_zlib()?;
         let timestamps = self.datagram_timing.outgoing(now_ms)?;
         let identifier = self.fragment_identifier.take()?;
@@ -447,7 +458,7 @@ impl SessionDriver {
 
         for (number, body) in compressed.chunks(MAX_FRAGMENT_BODY_BYTES).enumerate() {
             if *self.cancellation_rx.borrow() {
-                return Ok(false);
+                return Ok(TransportSendOutcome::Cancelled);
             }
             let number =
                 u16::try_from(number).map_err(|_| DriverError::FragmentIdentifierExhausted)?;
@@ -467,16 +478,65 @@ impl SessionDriver {
                 &plaintext[..plaintext_len],
                 &mut datagram,
             )?;
-            let sent = self
-                .socket
-                .send_to(&datagram[..datagram_len], self.server_addr)
-                .await?;
+            let sent = match self.send_datagram(&datagram[..datagram_len]).await {
+                Ok(sent) => sent,
+                Err(error)
+                    if *self.state_tx.borrow() == SessionState::Active
+                        && is_temporary_local_send_error(error.kind()) =>
+                {
+                    return Ok(TransportSendOutcome::Deferred);
+                }
+                Err(error) => return Err(error.into()),
+            };
             if sent != datagram_len {
                 return Err(DriverError::IncompleteDatagramSend);
             }
         }
 
-        Ok(true)
+        Ok(TransportSendOutcome::Sent)
+    }
+
+    fn defer_temporary_send(&mut self, now_ms: u64) -> Result<(), DriverError> {
+        let delay_ms = self.temporary_send_retry_ms();
+        self.scheduler.defer_send(now_ms, delay_ms)?;
+        Ok(())
+    }
+
+    fn temporary_send_retry_ms(&self) -> u64 {
+        self.datagram_timing
+            .estimator()
+            .retransmission_timeout_ms()
+            .max(INITIAL_RETRANSMISSION_TIMEOUT_MS)
+    }
+
+    async fn send_datagram(&mut self, datagram: &[u8]) -> Result<usize, std::io::Error> {
+        #[cfg(test)]
+        if let Some(Some(kind)) = self.send_outcomes.pop_front() {
+            return Err(std::io::Error::from(kind));
+        }
+        self.socket.send_to(datagram, self.server_addr).await
+    }
+
+    #[cfg(test)]
+    pub(super) fn inject_send_error(&mut self, kind: ErrorKind) {
+        self.send_outcomes.push_back(Some(kind));
+    }
+
+    #[cfg(test)]
+    pub(super) fn inject_send_outcomes(
+        &mut self,
+        outcomes: impl IntoIterator<Item = Option<ErrorKind>>,
+    ) {
+        self.send_outcomes.extend(outcomes);
+    }
+
+    #[cfg(test)]
+    pub(super) async fn send_transport_instruction_for_test(
+        &mut self,
+        instruction: &TransportInstruction,
+        now_ms: u64,
+    ) -> Result<TransportSendOutcome, DriverError> {
+        self.send_transport_instruction(instruction, now_ms).await
     }
 
     fn handle_datagram(
@@ -625,11 +685,13 @@ impl SessionDriver {
             .difference(send_plan.base_state, send_plan.target_state)?;
         let mut instruction = send_plan.instruction(difference, INITIAL_CHAFF.to_vec());
         instruction.acknowledged_state = SHUTDOWN_STATE;
-        if !self
+        match self
             .send_transport_instruction(&instruction, now_ms)
             .await?
         {
-            return Ok(false);
+            TransportSendOutcome::Sent => {}
+            TransportSendOutcome::Cancelled => return Ok(false),
+            TransportSendOutcome::Deferred => return Ok(true),
         }
         let commit = self.synchronization.commit_send(send_plan)?;
         if let Some(evicted) = commit.capacity_evicted_state {
@@ -655,12 +717,22 @@ impl SessionDriver {
                 return Ok(SessionExit::LocalClosed);
             }
             if now_ms >= next_send_ms {
-                if !self.send_shutdown_request(now_ms).await? {
-                    return Ok(SessionExit::Cancelled);
+                match self.send_shutdown_request(now_ms).await? {
+                    TransportSendOutcome::Sent => {
+                        next_send_ms = now_ms
+                            .checked_add(
+                                self.datagram_timing.estimator().retransmission_timeout_ms(),
+                            )
+                            .ok_or(DriverError::ClockExhausted)?;
+                    }
+                    TransportSendOutcome::Cancelled => return Ok(SessionExit::Cancelled),
+                    TransportSendOutcome::Deferred => {
+                        let retry_ms = self.temporary_send_retry_ms();
+                        next_send_ms = now_ms
+                            .checked_add(retry_ms)
+                            .ok_or(DriverError::ClockExhausted)?;
+                    }
                 }
-                next_send_ms = now_ms
-                    .checked_add(self.datagram_timing.estimator().retransmission_timeout_ms())
-                    .ok_or(DriverError::ClockExhausted)?;
             }
 
             let wake_ms = next_send_ms.min(deadline_ms);
@@ -716,7 +788,10 @@ impl SessionDriver {
         }
     }
 
-    async fn send_shutdown_request(&mut self, now_ms: u64) -> Result<bool, DriverError> {
+    async fn send_shutdown_request(
+        &mut self,
+        now_ms: u64,
+    ) -> Result<TransportSendOutcome, DriverError> {
         let base_state = self.synchronization.known_receiver_state();
         let current_state = self.synchronization.local_latest();
         let difference = self.client_history.difference(base_state, current_state)?;
@@ -808,6 +883,23 @@ impl SessionDriver {
 enum DatagramOutcome {
     Continue,
     RemoteShutdown,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum TransportSendOutcome {
+    Sent,
+    Cancelled,
+    Deferred,
+}
+
+pub(super) fn is_temporary_local_send_error(kind: ErrorKind) -> bool {
+    matches!(
+        kind,
+        ErrorKind::NetworkDown
+            | ErrorKind::NetworkUnreachable
+            | ErrorKind::HostUnreachable
+            | ErrorKind::AddrNotAvailable
+    )
 }
 
 enum Wake {

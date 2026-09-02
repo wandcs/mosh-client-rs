@@ -318,6 +318,22 @@ fixture proves the visible-frame contract for live and replacement projections.
 LeanTTY still owns implementation and physical verification of whole-Session
 terminal-page isolation.
 
+LeanTTY then reproduced MCRS-003 on a physical ARM64 HarmonyOS PC: disabling
+the real WLAN interface terminated an active Session with a local UDP I/O error
+while the stock server and remote PTY remained alive. ADR 0011 admits the
+smallest library-owned recovery policy:
+
+- [x] Recover only explicitly allowed interface- and route-loss `send_to`
+  errors after the Session is active.
+- [x] Leave failed SSP and scheduler plans uncommitted and pace later attempts
+  through the existing scheduler without a retry count or busy loop.
+- [x] Preserve cancellation, the four-second graceful-close bound, permanent
+  I/O failure, fragmented-send replacement, and concurrent Session isolation.
+- [x] Rerun focused deterministic tests, the stock recovery fixture, and the
+  complete WSL verification gate.
+- [ ] Pin the resulting revision in LeanTTY and prove physical WLAN
+  interruption and recovery in the same remote PTY.
+
 ### Phase 4 code-organization maintenance
 
 Repeated consumer-driven additions have made two existing file boundaries

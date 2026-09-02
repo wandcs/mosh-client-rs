@@ -245,6 +245,31 @@ fn retransmission_and_heartbeat_use_committed_send_time() {
 }
 
 #[test]
+fn temporary_send_failure_defers_without_committing_pending_work() {
+    let timing = RttEstimator::new();
+    let mut scheduler = SendScheduler::new(0);
+    scheduler.note_local_change(0).unwrap();
+    let failed = expect_send(scheduler.poll(15, &timing, None).unwrap());
+    scheduler.defer_send(15, 1_000).unwrap();
+
+    assert_eq!(
+        scheduler.poll(15, &timing, None).unwrap(),
+        SchedulerPoll::Pending { wake_at_ms: 1_015 }
+    );
+    assert_eq!(
+        scheduler.poll(1_014, &timing, None).unwrap(),
+        SchedulerPoll::Pending { wake_at_ms: 1_015 }
+    );
+    let retry = expect_send(scheduler.poll(1_015, &timing, None).unwrap());
+    assert_eq!(retry.reasons, failed.reasons);
+    scheduler.commit_send(retry).unwrap();
+    assert_eq!(
+        scheduler.poll(1_016, &timing, None).unwrap(),
+        SchedulerPoll::Pending { wake_at_ms: 4_015 }
+    );
+}
+
+#[test]
 fn a_large_time_jump_coalesces_all_expired_reasons_into_one_send() {
     let timing = RttEstimator::new();
     let mut scheduler = SendScheduler::new(0);

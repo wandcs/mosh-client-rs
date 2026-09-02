@@ -559,3 +559,30 @@ Author:
   behavior. The physical run did not retain an internal acknowledgement trace,
   so LeanTTY must pin this revision and repeat the ARM64 latency fixture before
   treating the device symptom as closed.
+
+### Physical local-interface outage and established-Session recovery
+
+- Date: 2026-09-02
+- Behavior: after an authenticated Session became active, disabling the real
+  WLAN interface produced a local UDP I/O failure and terminated the client in
+  about 7.4 seconds while the application, stock server, and remote PTY remained
+  alive.
+- Evidence class: project-controlled physical consumer experiment and public
+  Mosh behavior contract.
+- Source: [LeanTTY physical local-send recovery evidence](fixtures/leantty-physical-local-send-recovery.md),
+  the public [Mosh technical overview](https://mosh.org/), and Rust's public
+  [`std::io::ErrorKind`](https://doc.rust-lang.org/std/io/enum.ErrorKind.html)
+  category contract.
+- Observed versions: `mosh-client-rs` `e1346b3`, unmodified stock
+  `mosh-server` 1.4.0, and one ARM64 HarmonyOS PC with its real WLAN interface
+  disabled through system UI.
+- Implementation consequence: in an established Session, classify only
+  `NetworkDown`, `NetworkUnreachable`, `HostUnreachable`, and
+  `AddrNotAvailable` send errors as temporary; preserve Session authority,
+  leave failed plans uncommitted, and retry through the bounded existing
+  scheduler. Keep other I/O errors fatal and keep reachability independent.
+- Limits: the physical artifact retained the stable local-I/O category but not
+  the exact `ErrorKind`. The allowlist follows the narrow standard categories
+  whose meanings match interface, route, host-route, and local-address loss.
+  LeanTTY must pin and rerun the same physical case; broad or platform-specific
+  error categories require separate evidence.

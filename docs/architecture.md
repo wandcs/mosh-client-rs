@@ -12,8 +12,9 @@
 > [0006](decisions/0006-phase-2-core-viability-gate.md),
 > [0007](decisions/0007-public-session-api.md),
 > [0008](decisions/0008-authenticated-graceful-close.md), and
-> [0009](decisions/0009-session-reachability.md), and
-> [0010](decisions/0010-public-prediction-modes.md)
+> [0009](decisions/0009-session-reachability.md),
+> [0010](decisions/0010-public-prediction-modes.md), and
+> [0011](decisions/0011-established-session-local-send-recovery.md)
 
 The [Phase 3 mechanism necessity review](necessity-review.md) records which
 implemented mechanisms the stabilized library keeps and which behavior remains
@@ -166,6 +167,13 @@ feed TCP-style SRTT and RTTVAR equations with Mosh's 50 ms RTO floor. Until the
 first sample, the local policy uses a one-second RTO. Wire timestamp conversion
 is separate from the estimator so wrap, stale replies, and implausible samples
 cannot mutate it accidentally.
+
+An established Session treats only the interface- and route-loss send errors
+listed in ADR 0011 as temporary. The failed SSP and scheduler plans remain
+uncommitted, and the existing scheduler defers the next attempt by the current
+RTO with a one-second floor. A later attempt uses fresh packet and fragment
+identifiers while preserving the same Session authority. This adds neither a
+retry owner nor a cancellation flag outside the Session driver.
 
 ### Fragment reassembly boundary
 
@@ -500,8 +508,6 @@ exist to fuzz.
 The initial design defers:
 
 - prediction beyond the measured single-byte printable ASCII epoch;
-- recovery from selected local UDP send errors until platform evidence defines
-  which errors are temporary and how retries remain paced;
 - a public terminal-cell or screen-snapshot API;
 - terminal profiles beyond the first verified UTF-8 VT target;
 - complete or persistent scrollback;

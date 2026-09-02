@@ -259,6 +259,7 @@ pub(crate) struct SendScheduler {
     last_send_ms: Option<u64>,
     local_change_at_ms: Option<u64>,
     acknowledgement_at_ms: Option<u64>,
+    send_not_before_ms: Option<u64>,
     generation: u64,
 }
 
@@ -270,6 +271,7 @@ impl SendScheduler {
             last_send_ms: None,
             local_change_at_ms: None,
             acknowledgement_at_ms: None,
+            send_not_before_ms: None,
             generation: 0,
         }
     }
@@ -332,6 +334,14 @@ impl SendScheduler {
             reasons.insert(SendReasons::HEARTBEAT);
         }
         if reasons != SendReasons::default() {
+            match self.send_not_before_ms {
+                Some(not_before) if now_ms < not_before => {
+                    return Ok(SchedulerPoll::Pending {
+                        wake_at_ms: not_before,
+                    });
+                }
+                Some(_) | None => {}
+            }
             return Ok(SchedulerPoll::Send(WakePlan {
                 generation: self.generation,
                 planned_at_ms: now_ms,
@@ -359,8 +369,16 @@ impl SendScheduler {
         let next_generation = self.next_generation()?;
         self.local_change_at_ms = None;
         self.acknowledgement_at_ms = None;
+        self.send_not_before_ms = None;
         self.last_send_ms = Some(plan.planned_at_ms);
         self.generation = next_generation;
+        Ok(())
+    }
+
+    pub(crate) fn defer_send(&mut self, now_ms: u64, delay_ms: u64) -> Result<(), TimingError> {
+        let not_before = checked_deadline(now_ms, delay_ms)?;
+        self.observe_time(now_ms)?;
+        self.send_not_before_ms = Some(not_before);
         Ok(())
     }
 

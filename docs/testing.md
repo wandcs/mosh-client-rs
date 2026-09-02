@@ -159,6 +159,15 @@ changes the client source address, recovers at the RTO boundary to the same
 fixed server endpoint, processes the server acknowledgement, schedules the
 return acknowledgement, and cancels without queued work.
 
+The Session unit suite injects send outcomes only at the private concrete UDP
+send boundary. It proves that an active Session defers the ADR 0011 temporary
+error classes by at least one second without committing SSP or scheduler state,
+while permanent and ambiguous errors remain fatal. Separate cases cover prompt
+cancellation during that wait, the existing four-second graceful-close bound,
+a partial fragmented attempt replaced under a fresh identifier, and retry
+isolation across two Sessions. The hook is compiled only for crate tests and is
+not a production transport abstraction.
+
 A local stock 1.4.0 Session fixture adds black-box recovery evidence. A
 test-only loopback relay drops both directions for 1.5 seconds, switches the
 server-facing traffic to a second UDP source port, and then restores delivery.
@@ -323,8 +332,8 @@ client and server fixtures prove the reserved close target in both directions,
 the no-ACK window, final-output drain, and server process cleanup. A graceful
 owner keeps consuming output until task completion; hard cancellation remains
 the escape path when presentation is abandoned. These tests do not prove a
-long outage, physical address change, every cancellation boundary, HarmonyOS
-behavior, or LeanTTY lifecycle integration.
+long outage, physical address change, the precise `ErrorKind` produced by every
+HarmonyOS network transition, or LeanTTY lifecycle integration.
 
 ## Black-box stock-server interoperability
 

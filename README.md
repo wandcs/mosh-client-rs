@@ -26,6 +26,11 @@ non-predictive medians of 108 ms and 189 ms at 80 ms and 160 ms imposed RTT,
 while the confirmed prediction epoch removes that visible network delay and
 still converges to a stock-server marker.
 
+Established Sessions retain their protocol and terminal state across a narrow
+allowlist of local UDP interface- and route-loss send errors. Failed sends stay
+uncommitted and retry through the existing bounded scheduler; other I/O errors
+remain explicit failures.
+
 The Phase 2 viability gate found no material terminal-correctness or recovery
 deficit within the declared local compatibility scope. Public contract tests
 cover validation, owner shutdown, state, graceful close, and idempotent

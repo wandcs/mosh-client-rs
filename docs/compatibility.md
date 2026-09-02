@@ -81,8 +81,9 @@ to 100×30 and 60×20, followed by a replacement-surface repaint. Stock 1.4.0
 black-box fixtures also cover the reserved close target in both
 directions, the peer acknowledgement shape, and the bounded no-ACK wait.
 Public reachability now reports recent-contact and recent-reply warnings without
-treating silence as close. Physical address change, longer recovery behavior,
-and scrollback characterization remain open.
+treating silence as close. Established Sessions also preserve state across the
+selected temporary local UDP send errors in ADR 0011. Physical address change,
+longer recovery behavior, and scrollback characterization remain open.
 
 The full evidence matrix, offline-first policy, runtime isolation cases, VT
 output contract, and physical LeanTTY acceptance are defined in
@@ -91,7 +92,7 @@ output contract, and physical LeanTTY acceptance are defined in
 ## Deferred compatibility
 
 IPv6, configurable port ranges, broader prediction, locale negotiation, broad
-terminal application coverage, recoverable local UDP send errors, configurable
-reachability thresholds, and non-LeanTTY consumers require separate evidence. ProxyJump applies
-only to an embedding application's SSH bootstrap; it does not imply UDP
-reachability.
+terminal application coverage, additional recoverable local UDP error classes,
+configurable reachability thresholds, and non-LeanTTY consumers require
+separate evidence. ProxyJump applies only to an embedding application's SSH
+bootstrap; it does not imply UDP reachability.

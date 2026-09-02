@@ -106,6 +106,7 @@ pending scalars and uses the one retained base rather than per-scalar screens.
 | Initial retransmission timeout | 1 s | RFC 6298 default before the first RTT sample |
 | Minimum retransmission timeout | 50 ms | Published Mosh design |
 | Maximum retransmission timeout | 5 s | Local recovery-cadence bound |
+| Temporary local send retry | Current RTO, with a 1 s floor and 5 s ceiling | ADR 0011 established-Session recovery policy |
 | Accepted RTT sample | 0–60 s | Local 16-bit-wrap ambiguity bound; larger samples are ignored |
 | Timestamp reply age | At most 1 s | Published Mosh design |
 | Local state collection | At most 15 ms | Published Mosh design |

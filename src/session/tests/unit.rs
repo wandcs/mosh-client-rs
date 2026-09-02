@@ -1,5 +1,7 @@
+use super::super::driver::{TransportSendOutcome, is_temporary_local_send_error};
 use super::super::*;
 
+use std::io::ErrorKind;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::time::Duration;
 
@@ -166,6 +168,368 @@ fn initial_attachment_timeout_is_reported_before_any_peer_state() {
         assert!(state.changed().await.is_ok());
         assert_eq!(*state.borrow_and_update(), SessionState::Closed);
     });
+}
+
+#[test]
+fn active_session_retries_a_temporary_local_send_error_without_spinning() {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    runtime.block_on(async {
+        let server = UdpSocket::bind(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 0))
+            .await
+            .unwrap();
+        let port = server.local_addr().unwrap().port();
+        let bootstrap_text = format!("MOSH CONNECT {port} 4NeCCgvZFe2RnPgrcU1PQw");
+        let bootstrap = Bootstrap::parse(Ipv4Addr::LOCALHOST, bootstrap_text.as_bytes()).unwrap();
+        let (mut driver, channels) =
+            SessionDriver::connect(bootstrap, 80, 24, PredictionMode::Adaptive)
+                .await
+                .unwrap();
+        driver.state_tx.send_replace(SessionState::Active);
+        driver.inject_send_error(ErrorKind::NetworkUnreachable);
+        let SessionChannels {
+            commands: _commands,
+            output: _output,
+            cancellation,
+            graceful_close: _graceful_close,
+            state: _state,
+            reachability: _reachability,
+        } = channels;
+        let task = tokio::spawn(driver.run());
+        let mut inbound = [0_u8; MAX_DATAGRAM_BYTES];
+
+        assert!(
+            tokio::time::timeout(Duration::from_millis(250), server.recv_from(&mut inbound))
+                .await
+                .is_err(),
+            "temporary send failure retried without bounded pacing"
+        );
+        assert!(
+            !task.is_finished(),
+            "temporary local send failure terminated an active Session"
+        );
+        tokio::time::timeout(Duration::from_secs(2), server.recv_from(&mut inbound))
+            .await
+            .expect("active Session did not retry the temporary send failure")
+            .unwrap();
+
+        cancellation.send_replace(true);
+        assert_eq!(task.await.unwrap().unwrap(), SessionExit::Cancelled);
+    });
+}
+
+#[test]
+fn local_send_error_allowlist_excludes_permanent_and_ambiguous_failures() {
+    for kind in [
+        ErrorKind::NetworkDown,
+        ErrorKind::NetworkUnreachable,
+        ErrorKind::HostUnreachable,
+        ErrorKind::AddrNotAvailable,
+    ] {
+        assert!(is_temporary_local_send_error(kind), "missing {kind:?}");
+    }
+    for kind in [
+        ErrorKind::Other,
+        ErrorKind::PermissionDenied,
+        ErrorKind::NotConnected,
+        ErrorKind::ConnectionReset,
+        ErrorKind::WriteZero,
+    ] {
+        assert!(
+            !is_temporary_local_send_error(kind),
+            "overly broad recovery for {kind:?}"
+        );
+    }
+}
+
+#[test]
+fn permanent_local_send_error_still_terminates_an_active_session() {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    runtime.block_on(async {
+        let bootstrap = Bootstrap::parse(
+            Ipv4Addr::LOCALHOST,
+            b"MOSH CONNECT 65000 4NeCCgvZFe2RnPgrcU1PQw",
+        )
+        .unwrap();
+        let (mut driver, _channels) =
+            SessionDriver::connect(bootstrap, 80, 24, PredictionMode::Adaptive)
+                .await
+                .unwrap();
+        driver.state_tx.send_replace(SessionState::Active);
+        driver.inject_send_error(ErrorKind::PermissionDenied);
+
+        assert_eq!(
+            driver.run().await,
+            Err(DriverError::Io(ErrorKind::PermissionDenied))
+        );
+    });
+}
+
+#[test]
+fn temporary_send_error_before_attachment_remains_explicit() {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    runtime.block_on(async {
+        let bootstrap = Bootstrap::parse(
+            Ipv4Addr::LOCALHOST,
+            b"MOSH CONNECT 65000 4NeCCgvZFe2RnPgrcU1PQw",
+        )
+        .unwrap();
+        let (mut driver, _channels) =
+            SessionDriver::connect(bootstrap, 80, 24, PredictionMode::Adaptive)
+                .await
+                .unwrap();
+        driver.inject_send_error(ErrorKind::NetworkUnreachable);
+
+        assert_eq!(
+            driver.run().await,
+            Err(DriverError::Io(ErrorKind::NetworkUnreachable))
+        );
+    });
+}
+
+#[test]
+fn cancellation_preempts_a_deferred_temporary_send_retry() {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    runtime.block_on(async {
+        let bootstrap = Bootstrap::parse(
+            Ipv4Addr::LOCALHOST,
+            b"MOSH CONNECT 65000 4NeCCgvZFe2RnPgrcU1PQw",
+        )
+        .unwrap();
+        let (mut driver, channels) =
+            SessionDriver::connect(bootstrap, 80, 24, PredictionMode::Adaptive)
+                .await
+                .unwrap();
+        driver.state_tx.send_replace(SessionState::Active);
+        driver.inject_send_error(ErrorKind::NetworkUnreachable);
+        let cancellation = channels.cancellation;
+        let task = tokio::spawn(driver.run());
+
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert!(!task.is_finished());
+        cancellation.send_replace(true);
+        assert_eq!(
+            tokio::time::timeout(Duration::from_millis(250), task)
+                .await
+                .expect("cancellation waited for the deferred send deadline")
+                .unwrap()
+                .unwrap(),
+            SessionExit::Cancelled
+        );
+    });
+}
+
+#[test]
+fn graceful_close_keeps_its_bound_during_temporary_send_failures() {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    runtime.block_on(async {
+        let bootstrap = Bootstrap::parse(
+            Ipv4Addr::LOCALHOST,
+            b"MOSH CONNECT 65000 4NeCCgvZFe2RnPgrcU1PQw",
+        )
+        .unwrap();
+        let (mut driver, channels) =
+            SessionDriver::connect(bootstrap, 80, 24, PredictionMode::Adaptive)
+                .await
+                .unwrap();
+        driver.state_tx.send_replace(SessionState::Active);
+        driver.inject_send_outcomes(std::iter::repeat_n(Some(ErrorKind::NetworkUnreachable), 8));
+        channels.graceful_close.send_replace(true);
+        let started = Instant::now();
+
+        assert_eq!(
+            tokio::time::timeout(Duration::from_millis(4_500), driver.run())
+                .await
+                .expect("temporary send failures exceeded the graceful-close bound")
+                .unwrap(),
+            SessionExit::LocalClosed
+        );
+        assert!(started.elapsed() >= Duration::from_millis(3_900));
+    });
+}
+
+#[test]
+fn fragmented_retry_restarts_with_a_fresh_identifier() {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    runtime.block_on(async {
+        let server = UdpSocket::bind(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 0))
+            .await
+            .unwrap();
+        let port = server.local_addr().unwrap().port();
+        let bootstrap_text = format!("MOSH CONNECT {port} 4NeCCgvZFe2RnPgrcU1PQw");
+        let bootstrap = Bootstrap::parse(Ipv4Addr::LOCALHOST, bootstrap_text.as_bytes()).unwrap();
+        let (mut driver, _channels) =
+            SessionDriver::connect(bootstrap, 80, 24, PredictionMode::Adaptive)
+                .await
+                .unwrap();
+        driver.state_tx.send_replace(SessionState::Active);
+        driver.inject_send_outcomes([None, Some(ErrorKind::NetworkUnreachable)]);
+        let instruction = TransportInstruction {
+            protocol_version: PROTOCOL_VERSION,
+            base_state: 0,
+            new_state: 1,
+            acknowledged_state: 0,
+            discard_before_state: 0,
+            state_difference: deterministic_noise(16 * 1024),
+            chaff: vec![0],
+        };
+
+        assert_eq!(
+            driver
+                .send_transport_instruction_for_test(&instruction, 0)
+                .await
+                .unwrap(),
+            TransportSendOutcome::Deferred
+        );
+        let key = SessionKey::new(STOCK_1_4_0_KEY_BYTES);
+        let mut receiver = PacketReceiver::new(&key, Direction::ClientToServer);
+        let mut inbound = [0_u8; MAX_DATAGRAM_BYTES];
+        let (length, _) =
+            tokio::time::timeout(Duration::from_secs(1), server.recv_from(&mut inbound))
+                .await
+                .expect("first fragment was not sent before the injected failure")
+                .unwrap();
+        let opened = receiver.open(&mut inbound[..length]).unwrap();
+        let abandoned = fragment::decode(opened.plaintext).unwrap();
+        assert_eq!(abandoned.identifier, 0);
+        assert_eq!(abandoned.number, 0);
+        assert!(!abandoned.is_final);
+
+        assert_eq!(
+            driver
+                .send_transport_instruction_for_test(&instruction, 1_000)
+                .await
+                .unwrap(),
+            TransportSendOutcome::Sent
+        );
+        let mut numbers = Vec::new();
+        loop {
+            let (length, _) =
+                tokio::time::timeout(Duration::from_secs(1), server.recv_from(&mut inbound))
+                    .await
+                    .expect("replacement fragmented instruction was incomplete")
+                    .unwrap();
+            let opened = receiver.open(&mut inbound[..length]).unwrap();
+            let fragment = fragment::decode(opened.plaintext).unwrap();
+            assert_eq!(fragment.identifier, 1);
+            numbers.push(fragment.number);
+            if fragment.is_final {
+                break;
+            }
+        }
+        assert!(numbers.len() > 1);
+        assert!(
+            numbers
+                .iter()
+                .copied()
+                .eq(0..u16::try_from(numbers.len()).unwrap())
+        );
+    });
+}
+
+#[test]
+fn temporary_send_retry_is_isolated_between_sessions() {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    runtime.block_on(async {
+        let first_server = UdpSocket::bind(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 0))
+            .await
+            .unwrap();
+        let second_server = UdpSocket::bind(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 0))
+            .await
+            .unwrap();
+        let first_bootstrap = Bootstrap::parse(
+            Ipv4Addr::LOCALHOST,
+            format!(
+                "MOSH CONNECT {} 4NeCCgvZFe2RnPgrcU1PQw",
+                first_server.local_addr().unwrap().port()
+            )
+            .as_bytes(),
+        )
+        .unwrap();
+        let second_bootstrap = Bootstrap::parse(
+            Ipv4Addr::LOCALHOST,
+            format!(
+                "MOSH CONNECT {} 4NeCCgvZFe2RnPgrcU1PQw",
+                second_server.local_addr().unwrap().port()
+            )
+            .as_bytes(),
+        )
+        .unwrap();
+        let (mut first, first_channels) =
+            SessionDriver::connect(first_bootstrap, 80, 24, PredictionMode::Adaptive)
+                .await
+                .unwrap();
+        let (second, second_channels) =
+            SessionDriver::connect(second_bootstrap, 80, 24, PredictionMode::Adaptive)
+                .await
+                .unwrap();
+        first.state_tx.send_replace(SessionState::Active);
+        second.state_tx.send_replace(SessionState::Active);
+        first.inject_send_error(ErrorKind::NetworkUnreachable);
+        let first_cancellation = first_channels.cancellation;
+        let second_cancellation = second_channels.cancellation;
+        let first_task = tokio::spawn(first.run());
+        let second_task = tokio::spawn(second.run());
+        let mut inbound = [0_u8; MAX_DATAGRAM_BYTES];
+
+        tokio::time::timeout(
+            Duration::from_millis(250),
+            second_server.recv_from(&mut inbound),
+        )
+        .await
+        .expect("one Session's retry delay leaked into another Session")
+        .unwrap();
+        assert!(
+            tokio::time::timeout(
+                Duration::from_millis(250),
+                first_server.recv_from(&mut inbound),
+            )
+            .await
+            .is_err(),
+            "failing Session retried without its own pacing"
+        );
+        tokio::time::timeout(Duration::from_secs(2), first_server.recv_from(&mut inbound))
+            .await
+            .expect("failing Session did not retry independently")
+            .unwrap();
+
+        first_cancellation.send_replace(true);
+        second_cancellation.send_replace(true);
+        assert_eq!(first_task.await.unwrap().unwrap(), SessionExit::Cancelled);
+        assert_eq!(second_task.await.unwrap().unwrap(), SessionExit::Cancelled);
+    });
+}
+
+fn deterministic_noise(length: usize) -> Vec<u8> {
+    let mut state = 0x1234_5678_u32;
+    (0..length)
+        .map(|_| {
+            state ^= state << 13;
+            state ^= state >> 17;
+            state ^= state << 5;
+            state.to_le_bytes()[0]
+        })
+        .collect()
 }
 
 #[test]

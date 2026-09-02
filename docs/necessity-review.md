@@ -252,6 +252,11 @@ the rollback and comparison path.
 
 ## Timers, recovery, and roaming — keep; defer local-I/O recovery policy
 
+> Superseded on 2026-09-02 for selected established-Session UDP send errors:
+> LeanTTY reproduced a fatal local I/O result while the application, stock
+> server, and remote PTY remained alive during a physical WLAN interface
+> outage. ADR 0011 admits a narrow allowlist and scheduler-owned retry pacing.
+
 **User value and evidence.** RTT estimation, frame pacing, delayed ACK,
 retransmission, and heartbeat provide bounded responsiveness without replaying
 every missed tick. The published design establishes these roles. Deterministic
