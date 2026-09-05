@@ -5,12 +5,14 @@ does not authorize work before its entry gate passes. Every item must follow
 [the project principles](project-principles.md); completing a checklist does not
 justify violating them.
 
-## Current work: prepare 0.1.0
+## Current work: 0.1.0 release completed
 
-The maintainer authorized release preparation on 2026-09-05, including Rust
-1.88 as the minimum supported compiler. The [release review](releases/0.1.0.md)
-records the decision and evidence. Publication is separate from LeanTTY's
-formal product acceptance.
+The maintainer authorized release preparation and formal publication on
+2026-09-05, including Rust 1.88 as the minimum supported compiler, and selected
+GitHub publication through the authenticated `gh` CLI. The
+[0.1.0 release](https://github.com/wandcs/mosh-client-rs/releases/tag/v0.1.0)
+is public. The [release review](releases/0.1.0.md) records the decision and
+evidence. Publication is separate from LeanTTY's formal product acceptance.
 
 - [x] Select `mosh-client` 0.1.0 and Rust 1.88; preserve dependency versions,
   protocol behavior, public API, and resource limits.
@@ -22,10 +24,14 @@ formal product acceptance.
   on Rust 1.88; permit publication only to crates.io.
 - [x] Verify a clean candidate with a successful publication dry run; retain
   the final commit, package hash, and file list in the local publication handoff.
-- [ ] Configure crates.io authentication in the maintainer's publishing
-  environment; the default WSL preflight found no token or credential provider.
-- [ ] After maintainer publication authorization, publish the verified package,
-  create `v0.1.0` at that exact commit, and publish the matching GitHub Release.
+- [x] Publish `v0.1.0` at the verified candidate commit and create the formal
+  GitHub Release through `gh`, with the inspected package and SHA-256 file.
+- [x] Read back the public release metadata, uploaded package digest, remote
+  tag, and main branch; verify the documented Git dependency on Rust 1.88.
+
+The release channel is GitHub Releases. No crates.io upload was made and no
+registry credential was installed. Any later registry publication is separate
+work; consumers can use the published Git tag now.
 
 ## Phase 0: Freeze the implementation contract
 
