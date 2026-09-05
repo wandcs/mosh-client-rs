@@ -20,7 +20,8 @@ formal product acceptance.
   dependency and secret audits, and the ARM64 OHOS build.
 - [x] Complete release notes and verify package assembly and the unpacked crate
   on Rust 1.88; permit publication only to crates.io.
-- [ ] Retain a clean candidate commit with a successful publication dry run.
+- [x] Verify a clean candidate with a successful publication dry run; retain
+  the final commit, package hash, and file list in the local publication handoff.
 - [ ] Configure crates.io authentication in the maintainer's publishing
   environment; the default WSL preflight found no token or credential provider.
 - [ ] After maintainer publication authorization, publish the verified package,
