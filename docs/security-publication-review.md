@@ -5,7 +5,15 @@
 > Scope: the root crate, the separate fuzz workspace, stock 1.4.0 test support,
 > and the package assembled by Cargo
 
-## Decision
+## Current release review
+
+The maintainer authorized 0.1.0 preparation on 2026-09-05, with Rust 1.88 as the
+minimum compiler. The [0.1.0 review](releases/0.1.0.md) supersedes the release
+identity decision below and records the new candidate gates. The dependency,
+secret-handling, and OCB3 risk boundaries remain in force. Historical test
+counts and Rust 1.85 results below do not certify the current revision.
+
+## Historical decision: 2026-08-30
 
 The implementation and security gate is closed. The crate is not ready for a
 crates.io release, so `publish = false` remains.

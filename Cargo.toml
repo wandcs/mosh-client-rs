@@ -1,15 +1,15 @@
 [package]
 name = "mosh-client"
-version = "0.0.0"
+version = "0.1.0"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.88"
 license = "MIT OR Apache-2.0"
 description = "An independent, unofficial, wire-compatible Mosh client implementation in Rust"
 readme = "README.md"
 repository = "https://github.com/wandcs/mosh-client-rs"
 keywords = ["mosh", "terminal", "udp", "roaming"]
 categories = ["network-programming"]
-publish = false
+publish = ["crates-io"]
 
 [lib]
 path = "src/lib.rs"

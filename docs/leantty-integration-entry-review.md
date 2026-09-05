@@ -5,7 +5,22 @@
 > Scope: the evidence required before LeanTTY product integration begins, and
 > the later native consumer result
 
-## Stage decision
+## Current status: 2026-09-05
+
+The original native-entry review below is historical. LeanTTY has since wired
+Pane input and the Terminal Surface and recorded development tests for shell,
+tmux, Vim, prediction, close, interruption, and real network switching. See
+the [prediction](fixtures/leantty-arm64-prediction.md),
+[WLAN recovery](fixtures/leantty-physical-local-send-recovery.md), and
+[network-switch](fixtures/leantty-physical-network-switch.md) closure records.
+
+Those results close the reported library defects. LeanTTY's formal 1.6 matrix
+and its later presentation, input, and harness follow-ups remain product work.
+They do not certify a release of LeanTTY or a newly built HAP. The maintainer
+separately authorized the [0.1.0 library release review](releases/0.1.0.md),
+which supersedes the old `0.0.0 / publish=false` publication hold below.
+
+## Historical stage decision: 2026-08-30
 
 The `mosh-client` core is frozen after Phase 3F and successful native consumer
 integration. Further library work now requires evidence from LeanTTY's physical

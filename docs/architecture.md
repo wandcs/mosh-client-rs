@@ -409,8 +409,9 @@ The adapter sends input, resize, repaint, graceful-close, and cancellation
 commands and selects the standard prediction mode when creating the Session. It maps
 native events to the owning Pane with a Session identifier and lifecycle
 generation. Pane close cancels the Session. Surface detach keeps the Session
-alive. Surface attach requests a full repaint. Page destruction cancels all
-remaining Sessions. No session key or terminal state is persisted. The
+alive. Surface attach requests a full repaint. Destroying the actual Session
+owner cancels its task; replacing a UI Page may retain that process-owned owner
+and rebind callbacks. No session key or terminal state is persisted. The
 lifecycle generation rejects late Session events; it is not a display revision.
 
 LeanTTY keeps the existing binary bridge, VT renderer, input, resize, search,

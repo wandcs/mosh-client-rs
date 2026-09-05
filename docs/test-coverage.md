@@ -45,7 +45,7 @@ upstream code, fixtures, or test structure.
 | [Mosh issue 1400](https://github.com/mobile-shell/mosh/issues/1400) reports persistent display corruption from a blank-row scroll heuristic | This client has no equivalent scroll heuristic. `sparse_blank_rows_never_confuse_incremental_repaint` independently constructs three sparse frames and proves incremental convergence after every frame. |
 | [Mosh issue 950](https://github.com/mobile-shell/mosh/issues/950) reports stalls after VPN MTU truncation | Packet and fragment tests reject truncated or corrupted datagrams without replay mutation; deterministic and stock recovery tests prove later valid traffic recovers. The crate does not claim PMTU discovery or tolerance for a network that silently drops all larger UDP packets. |
 | [Mosh issue 1356](https://github.com/mobile-shell/mosh/issues/1356) reports a stock-server deadlock on large paste | The defect is server-side and remains open. The client enforces its 64 KiB command bound, but does not claim that stock 1.4.0 safely consumes every accepted paste as one application write. No client workaround or hazardous stock regression is added. |
-| LeanTTY MCRS-003 reproduces fatal local UDP I/O during a physical WLAN interface outage while the stock server and remote PTY remain alive | Session and timing regressions cover ADR 0011's explicit allowlist, uncommitted and paced retry, permanent-error failure, prompt cancellation, bounded close, fresh fragmented retry, and two-Session isolation. The existing stock fixtures prove outage/reachability recovery; the physical HarmonyOS rerun remains the consumer closing gate. |
+| LeanTTY MCRS-003 reproduces fatal local UDP I/O during a physical WLAN interface outage while the stock server and remote PTY remain alive | Session and timing regressions cover ADR 0011's explicit allowlist, uncommitted and paced retry, permanent-error failure, prompt cancellation, bounded close, fresh fragmented retry, and two-Session isolation. The existing stock fixtures prove outage/reachability recovery; the physical HarmonyOS rerun closed MCRS-003 on 2026-09-03 at revision `94f1322`, as recorded in the physical fixture. |
 
 ## Fuzz and resource campaigns
 
@@ -80,6 +80,7 @@ service or a deterministic completion claim.
 - The stock large-paste deadlock is an upstream server limitation, not client
   behavior that this crate can safely repair.
 - xterm.js, ARM64 HarmonyOS, lifecycle, physical roaming, and LeanTTY Pane
-  isolation remain Phase 4 evidence.
+  isolation use consumer-owned development evidence; the [0.1.0 review](releases/0.1.0.md)
+  records its scope. LeanTTY's formal product acceptance remains separate.
 - Dependency and secret audits, final suite reruns, and the publication decision
-  remain Phase 3F gates.
+  are recorded for the current candidate in the 0.1.0 review.

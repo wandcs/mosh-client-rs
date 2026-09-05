@@ -1,11 +1,12 @@
 # Security
 
-The protocol core has completed its Phase 3 security, interoperability, and
-resource review. The crate remains an unpublished `0.0.0` development package;
-see the [security and publication review](docs/security-publication-review.md)
-for its residual cryptographic risk and release blockers.
+The 0.1.0 library retains the protocol core's security, interoperability, and
+resource boundaries. See the [release review](docs/releases/0.1.0.md) for
+publication status and the [security review](docs/security-publication-review.md)
+for its accepted cryptographic risk.
 
 Do not include session keys, private host data, terminal contents, packet
-captures containing secrets, or credentials in reports. Once the repository is
-published, report vulnerabilities through its private GitHub security advisory
-channel. Until then, contact the maintainer privately.
+captures containing secrets, or credentials in reports. Use the repository's
+[private vulnerability reporting channel](https://github.com/wandcs/mosh-client-rs/security/advisories/new)
+for security findings. Do not disclose an unpatched vulnerability in a public
+issue.

@@ -2,6 +2,10 @@
 
 ## Baseline
 
+Version 0.1.0 requires Rust 1.88 or newer. Release checks exercise exactly Rust
+1.88.0 as well as current stable. Older Rust 1.85 validation records describe
+earlier development revisions and are not the 0.1.0 compiler contract.
+
 The initial oracle is an unmodified stock `mosh-server` 1.4.0. Interoperability
 must be demonstrated through public behavior and black-box fixtures.
 
@@ -82,8 +86,12 @@ black-box fixtures also cover the reserved close target in both
 directions, the peer acknowledgement shape, and the bounded no-ACK wait.
 Public reachability now reports recent-contact and recent-reply warnings without
 treating silence as close. Established Sessions also preserve state across the
-selected temporary local UDP send errors in ADR 0011. Physical address change,
-longer recovery behavior, and scrollback characterization remain open.
+selected temporary local UDP send errors in ADR 0011. LeanTTY's development
+records now cover [physical WLAN recovery](fixtures/leantty-physical-local-send-recovery.md)
+and [a real address change](fixtures/leantty-physical-network-switch.md) on one
+HAD-W32 PC. Those fixtures retain the same Session and remote PTY. Longer
+outages, other devices, and other network topologies require separate evidence;
+whole-Session display restoration remains the consumer's responsibility.
 
 The full evidence matrix, offline-first policy, runtime isolation cases, VT
 output contract, and physical LeanTTY acceptance are defined in

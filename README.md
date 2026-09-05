@@ -4,6 +4,12 @@ An independent, unofficial, wire-compatible Mosh client implementation in Rust.
 
 ## Status
 
+The first release version is `0.1.0`. The Cargo package is named `mosh-client`
+and requires Rust 1.88 or newer. Its initial scope is stock `mosh-server`
+1.4.0, IPv4, one fixed UDP server endpoint, and the UTF-8 `xterm-256color`
+profile. See the [0.1.0 release review](docs/releases/0.1.0.md) for verification
+and publication status and the [changelog](CHANGELOG.md) for the release scope.
+
 Phase 1's bounded authenticated UDP core and Phase 2 are complete. Phase 3 now
 exports the first small Session API with explicit lifecycle state, distinct
 graceful close and prompt cancellation, bounded commands, and ordered VT
@@ -37,12 +43,13 @@ cover validation, owner shutdown, state, graceful close, and idempotent
 cancellation; stock 1.4.0 fixtures drive the same public API and verify both
 authenticated close directions. LeanTTY has also integrated
 the crate behind an independent native Mosh owner and linked it in an ARM64 OHOS
-release build without adding a generic Transport layer. Pane, Terminal Surface,
-command-entry, and physical Session gates remain open in LeanTTY.
+release build without adding a generic Transport layer. Its development
+fixtures also demonstrate public prediction, authenticated close, WLAN
+interruption recovery, and a real source-address change on one physical ARM64
+HarmonyOS PC. These consumer results do not certify LeanTTY's separate 1.6
+release or extend support to other devices and network configurations.
 
-The Phase 3F security and packaging review keeps the crate unpublished until the
-maintainer chooses a release version, immutable tag, and complete package
-metadata. See [the roadmap](docs/roadmap.md), the
+See [the roadmap](docs/roadmap.md), the
 [LeanTTY integration review](docs/leantty-integration-entry-review.md), and the
 [security and publication review](docs/security-publication-review.md).
 
@@ -122,6 +129,10 @@ cargo fmt --all --check
 cargo clippy --all-targets --all-features -- -D warnings
 cargo test --all-targets --all-features
 ```
+
+Release verification also runs the same checks and rustdoc with Rust 1.88.0,
+the declared minimum version. See [testing](docs/testing.md) for the stock,
+fuzz, dependency, and ARM64 checks.
 
 ## License
 

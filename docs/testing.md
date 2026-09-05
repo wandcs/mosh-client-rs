@@ -443,6 +443,25 @@ cargo test --all-targets --all-features
 These commands run in the default WSL distribution at
 `/mnt/c/repos/mosh-client-rs`.
 
+For release candidates, also run the declared minimum compiler exactly. Version
+0.1.0 requires Rust 1.88.0; a current-stable pass cannot replace this check:
+
+```bash
+cargo +1.88.0 fmt --all --check
+cargo +1.88.0 clippy --locked --all-targets --all-features -- -D warnings
+cargo +1.88.0 test --locked --all-targets --all-features
+RUSTDOCFLAGS="-D warnings" cargo +1.88.0 doc --locked --no-deps --all-features
+cargo +1.88.0 test --locked --doc
+```
+
+Current stable also runs strict rustdoc and doctests. Keep the root and fuzz
+lockfiles unchanged during gates. Run all ignored stock fixtures serially with
+`cargo test --locked --all-targets --all-features -- --ignored --test-threads=1`.
+Audit both lockfiles, run the two bounded fuzz targets below, and build the
+library with `cargo build --locked --release --lib --target aarch64-unknown-linux-ohos`.
+Inspect `cargo package --list` and run `cargo publish --locked --dry-run` on a
+clean candidate before upload. The dry run is local verification, not a release.
+
 ## Test entrypoints
 
 Keep the common path in Cargo rather than a project-specific test runner:

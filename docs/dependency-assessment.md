@@ -14,8 +14,11 @@ versions.
 
 Phase 3F re-audited the complete resolved graph, `unsafe` boundaries, sources,
 checksums, licenses, advisories, and package assembly. See the
-[security and publication review](security-publication-review.md) for the final
-evidence and the decision to keep publication disabled.
+[security and publication review](security-publication-review.md) for the
+historical evidence. The [0.1.0 release review](releases/0.1.0.md) records the
+2026-09-05 repeat and the maintainer-approved Rust 1.88 minimum. This release
+keeps all registry versions and features unchanged; old Rust 1.85 results below
+apply only to their dated development baselines.
 
 ## Production candidates
 
@@ -89,7 +92,7 @@ synchronization or terminal message semantics.
 The terminal graph adds `vt100` 0.16.2, `vte` 0.15.0, `unicode-width` 0.2.2,
 `arrayvec` 0.7.8, `itoa` 1.0.18, and `memchr` 2.8.3. It has no native library,
 build script, runtime download, telemetry, or new `unsafe` block. `vt100` has
-MSRV 1.70 and `vte` has MSRV 1.62.1, both below the project's Rust 1.85 floor.
+MSRV 1.70 and `vte` has MSRV 1.62.1, both below the 0.1.0 Rust 1.88 floor.
 
 The project uses `vt100` as a private implementation detail, not a public cell
 contract. `vte` verifies that each stock-server paint patch ends in the ground
@@ -189,7 +192,7 @@ becomes available.
 ## Adopted Phase 3E test graph
 
 Property tests adopt `proptest` 1.11.0 with default features disabled and only
-`std`. It is `MIT OR Apache-2.0`, shares the project's Rust 1.85 floor, and is
+`std`. It is `MIT OR Apache-2.0`, requires Rust 1.85 (below the 0.1.0 floor), and is
 compiled only for test targets. The root lockfile adds 18 dev-only packages.
 The selected graph omits `fork`, `timeout`, `tempfile`, `rusty-fork`, and the
 bit-set feature; generated collections and case counts are bounded in each

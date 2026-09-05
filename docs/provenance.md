@@ -557,8 +557,10 @@ Author:
 - Limits: deterministic regressions and generated ordered-prefix cases prove
   the state-machine contract; stock fixtures prove convergence and loss
   behavior. The physical run did not retain an internal acknowledgement trace,
-  so LeanTTY must pin this revision and repeat the ARM64 latency fixture before
-  treating the device symptom as closed.
+  so it did not alone close the device symptom. The updated physical record
+  adds LeanTTY's successful `e1346b3` repeat, with 1 ms public output during
+  both delayed delivery and complete UDP loss. This is scoped development
+  evidence, not a new wire rule or formal product acceptance.
 
 ### Physical local-interface outage and established-Session recovery
 
@@ -584,5 +586,21 @@ Author:
 - Limits: the physical artifact retained the stable local-I/O category but not
   the exact `ErrorKind`. The allowlist follows the narrow standard categories
   whose meanings match interface, route, host-route, and local-address loss.
-  LeanTTY must pin and rerun the same physical case; broad or platform-specific
-  error categories require separate evidence.
+  LeanTTY's updated record closes the same physical case on `94f1322` after
+  about 9.7 seconds offline, with the same Session and remote PTY. It adds no
+  observed failing category; broad or platform-specific errors still require
+  separate evidence.
+
+### Physical client address change after WLAN switching
+
+- Date: 2026-09-04; imported on 2026-09-05.
+- Behavior: a real Wi-Fi switch changed the client's IPv4 address and route;
+  the public Session recovered and executed new input in the same remote PTY.
+- Evidence class: project-controlled physical consumer experiment.
+- Source: [LeanTTY network-switch record](fixtures/leantty-physical-network-switch.md).
+- Observed versions: library `94f1322`, stock `mosh-server` 1.4.0, and one
+  ARM64 HarmonyOS HAD-W32 PC with two controlled LAN paths.
+- Implementation consequence: corroborates the existing fixed-server-endpoint
+  and authenticated client-roaming contract; no code or wire rule changes.
+- Limits: retains the scoped consumer result and cleanup status, not raw
+  addresses, SSIDs, secrets, packets, or a formal LeanTTY release verdict.

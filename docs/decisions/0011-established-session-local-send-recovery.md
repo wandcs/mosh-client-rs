@@ -68,13 +68,13 @@ the allowlist remain `SessionError::Io`.
   connectivity keeps the Session alive and resumes when service returns.
 - Rust's public `std::io::ErrorKind` contract defines the selected categories
   as network, host, system-network, or requested-local-address unavailability;
-  all selected variants are available at the project's Rust 1.85 floor.
+  all selected variants are available on Rust 1.88, the 0.1.0 compiler floor.
 - Deterministic tests cover allowlist classification, scheduler pacing,
   uncommitted retry, permanent errors, cancellation, graceful close, and
   fragmented partial-send replacement.
 - Existing stock 1.4.0 outage and recovery fixtures remain the interoperability
-  oracle. LeanTTY must pin the resulting revision and rerun the physical WLAN
-  scenario to close MCRS-003 on ARM64 HarmonyOS.
+  oracle. LeanTTY pinned `94f1322` and closed the physical WLAN scenario on
+  2026-09-03, as recorded in the updated physical evidence above.
 
 ## Rejected alternatives
 

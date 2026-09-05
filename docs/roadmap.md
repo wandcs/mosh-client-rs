@@ -5,6 +5,27 @@ does not authorize work before its entry gate passes. Every item must follow
 [the project principles](project-principles.md); completing a checklist does not
 justify violating them.
 
+## Current work: prepare 0.1.0
+
+The maintainer authorized release preparation on 2026-09-05, including Rust
+1.88 as the minimum supported compiler. The [release review](releases/0.1.0.md)
+records the decision and evidence. Publication is separate from LeanTTY's
+formal product acceptance.
+
+- [x] Select `mosh-client` 0.1.0 and Rust 1.88; preserve dependency versions,
+  protocol behavior, public API, and resource limits.
+- [x] Reconcile the library's physical prediction and WLAN closure records with
+  LeanTTY, and record the scoped network-switch evidence.
+- [x] Repeat stable and minimum-version checks, stock interoperability, fuzzing,
+  dependency and secret audits, and the ARM64 OHOS build.
+- [x] Complete release notes and verify package assembly and the unpacked crate
+  on Rust 1.88; permit publication only to crates.io.
+- [ ] Retain a clean candidate commit with a successful publication dry run.
+- [ ] Configure crates.io authentication in the maintainer's publishing
+  environment; the default WSL preflight found no token or credential provider.
+- [ ] After maintainer publication authorization, publish the verified package,
+  create `v0.1.0` at that exact commit, and publish the matching GitHub Release.
+
 ## Phase 0: Freeze the implementation contract
 
 - [x] Identify public specifications, papers, standards, and black-box fixtures
@@ -295,8 +316,11 @@ unchanged while making confirmation independent of operation batching:
   candidate sequences.
 - [x] Rerun the stock latency and full-loss fixtures plus the complete local
   verification gate for the order-independent implementation.
-- [ ] Pin the fixed revision in LeanTTY and prove on ARM64 that at least one
+- [x] Pin the fixed revision in LeanTTY and prove on ARM64 that at least one
   post-confirmation `Always` byte is visible before the 40 ms one-way delay.
+
+LeanTTY closed this gate on `e1346b3`: public output appeared in 1 ms, including
+during total UDP loss. See the updated [physical prediction record](fixtures/leantty-arm64-prediction.md).
 
 LeanTTY then reproduced MCRS-008: the public VT stream reconstructs the stock
 server's current visible screen but does not preserve a remote application's
@@ -331,8 +355,12 @@ smallest library-owned recovery policy:
   I/O failure, fragmented-send replacement, and concurrent Session isolation.
 - [x] Rerun focused deterministic tests, the stock recovery fixture, and the
   complete WSL verification gate.
-- [ ] Pin the resulting revision in LeanTTY and prove physical WLAN
+- [x] Pin the resulting revision in LeanTTY and prove physical WLAN
   interruption and recovery in the same remote PTY.
+
+LeanTTY closed this gate on `94f1322` on 2026-09-03. The following day's
+[network-switch fixture](fixtures/leantty-physical-network-switch.md) also
+retained the same Session and remote PTY after a real source-address change.
 
 ### Phase 4 code-organization maintenance
 
@@ -357,13 +385,19 @@ public API change.
 
 - [x] Keep LeanTTY responsible for Host resolution, host verification,
   authentication, and controlled server startup.
-- [ ] Connect one Pane-owned Mosh Session to one Terminal Surface without a
+- [x] Connect one Pane-owned Mosh Session to one Terminal Surface without a
   generic Transport plugin layer.
-- [ ] Build for ARM64 HarmonyOS and verify a real shell, tmux, and basic editor.
-- [ ] Compare SSH and Mosh under normal network, interruption, address change,
+- [x] Build for ARM64 HarmonyOS and verify a real shell, tmux, and basic editor.
+- [x] Compare SSH and Mosh under normal network, interruption, address change,
   lock, sleep, UDP block, recovery, cancellation, and Pane close.
 - [ ] Integrate only if measured recovery, correctness, security, and maintenance
   value clearly exceed the added complexity.
+
+The checked consumer items refer to LeanTTY's development evidence through
+2026-09-04. Its 2026-09-05 formal matrix and subsequent presentation/input
+follow-ups remain consumer work; the final product acceptance item stays open.
+They do not block the separately authorized, narrowly scoped library release
+unless they reproduce a library defect.
 
 Reopen library development only for a reproduced protocol or API defect, an
 observed platform recovery rule, a dependency security event, or an explicit

@@ -949,21 +949,21 @@ async fn wait_next(
                 None => Wake::OwnerDropped,
             });
         }
-        if let Some(graceful_close) = graceful_close.as_mut() {
-            if let Poll::Ready(Ok(())) = graceful_close.as_mut().poll(context) {
-                return Poll::Ready(Wake::GracefulClose);
-            }
+        if let Some(graceful_close) = graceful_close.as_mut()
+            && let Poll::Ready(Ok(())) = graceful_close.as_mut().poll(context)
+        {
+            return Poll::Ready(Wake::GracefulClose);
         }
         if timer.as_mut().poll(context).is_ready() {
             return Poll::Ready(Wake::Timer);
         }
-        if let Some(output) = output.as_mut() {
-            if let Poll::Ready(permit) = output.as_mut().poll(context) {
-                return Poll::Ready(match permit {
-                    Ok(permit) => Wake::Output(permit),
-                    Err(_) => Wake::OwnerDropped,
-                });
-            }
+        if let Some(output) = output.as_mut()
+            && let Poll::Ready(permit) = output.as_mut().poll(context)
+        {
+            return Poll::Ready(match permit {
+                Ok(permit) => Wake::Output(permit),
+                Err(_) => Wake::OwnerDropped,
+            });
         }
         Poll::Ready(Wake::Datagram(ready!(datagram.as_mut().poll(context))))
     })

@@ -29,7 +29,7 @@ does not prove that every local I/O error is recoverable.
 LeanTTY evidence identifier:
 `device-mosh-wifi-pause-recovery-20260902-retry2/device-mosh.json`.
 
-## Retained limitation and closing gate
+## Original limitation and closing gate
 
 The sanitized artifact retained the stable `local-udp-io-error` category but
 not the precise Rust `ErrorKind`. ADR 0011 therefore admits only the narrow
@@ -42,6 +42,27 @@ closing run must observe `Interrupted`, restore WLAN, observe `Responsive`, and
 execute a new exact command in the same remote PTY. If HarmonyOS reports only a
 broad error category, that exact safe category or OS code must be captured
 before the allowlist expands.
+
+## Closure recorded on 2026-09-03
+
+LeanTTY pinned `94f13225aba535c6645a9179e0ce9f00b156629e` and repeated
+the real WLAN toggle on HAD-W32 against stock `mosh-server` 1.4.0. The interface
+was offline for about 9.7 seconds. The same Session reported
+`Interrupted(NoRecentContact)` without automatic close or error, then reported
+`Responsive` after WLAN returned. A new command ran in the same controlled
+remote PTY, followed by an acknowledged authenticated close.
+
+Preferences, secret checks, fixture processes, HDC reverse mappings, persistent
+network settings, temporary directories, and WLAN restoration passed cleanup.
+The test-HAP SHA-256 was
+`9e2fa750b2a8ca5f5a83a595382aed3076b753ea6c733f33a0df0a73ce9e8287`.
+The evidence identifier is
+`device-mosh-wifi-pause-recovery-20260903-94f1322/device-mosh.json`.
+
+Source: LeanTTY's
+[MCRS-003 record](https://github.com/wandcs/leantty/blob/ff86789caba01257e2d0865d63a152647a3125f9/docs/design/mosh-client-rs-integration-issues.md).
+This imported development evidence closes the reported symptom. It supplies
+no new failing `ErrorKind` and does not justify widening ADR 0011's allowlist.
 
 ## Retained data
 
