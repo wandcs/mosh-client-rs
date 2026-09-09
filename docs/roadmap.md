@@ -23,6 +23,15 @@ lid close while the process, stock server, and remote PTY remained alive. ADR
 - [ ] Pin the fixed revision in LeanTTY and run one named operator lid-close,
   reopen, recovery-input, and same-PTY scenario on the physical HAD-W32 PC.
 
+LeanTTY built and verified an ARM64 diagnostic HAP at `ae86bfe` on 2026-09-10.
+The first attempt did not exercise the lid. A later attempt included one real
+lid close and passed its workspace-restoration checks, but HarmonyOS destroyed
+and replaced the client process. It preserved neither the same Session nor the
+same remote PTY and captured no `PermissionDenied`. This process-replacement
+result is not evidence for or against ADR 0012. LeanTTY restored its `v0.1.0`
+dependency; the fixed revision remains diagnostic until a physical run reaches
+the same-process branch.
+
 No new release or tag is authorized by this maintenance item.
 
 ## 0.1.0 release completed

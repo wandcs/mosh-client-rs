@@ -53,3 +53,28 @@ application process and remote PTY, observe `Interrupted`, return to
 `Responsive`, execute one exact post-resume command, and complete cleanup. If
 the Session still fails, retain the safe `ErrorKind` and, when available, the
 private I/O direction without recording raw user data or secrets.
+
+## Fixed-revision attempt status
+
+On 2026-09-10 LeanTTY built an ARM64 diagnostic HAP with library revision
+`ae86bfe`. Its focused policy and native gates passed, including 56 native
+tests, two input-rejection tests, and one exact 34-character physical baseline
+command. The HAP SHA-256 was
+`1a3986dafb3595239b2e13f50cf93abc724652a1918f1b03b7ba2c7406b44c84`.
+
+The first attempt failed during environment preparation and did not exercise
+the lid. A later attempt used the same HAP and one real lid close. The named
+scenario reported `passed/stable`, and cleanup passed, but HarmonyOS destroyed
+the old client process at 22:03:17.386. The reopened application had a new PID
+and process start time while the old remote shell and server were still alive.
+
+That run verified LeanTTY's process-replacement workspace behavior: it restored
+the workspace warning and local Mosh help, isolated old remote content, and did
+not create a replacement Session automatically. It did not preserve the same
+Session or remote PTY, and the continuous log captured no `PermissionDenied`.
+The destroy-cause snapshot added no useful evidence.
+
+The run therefore neither confirms nor rejects ADR 0012's established-Session
+recovery. LeanTTY restored its `v0.1.0` tag dependency. The diagnostic revision
+is not formally adopted, and the closing gate remains pending until a physical
+run follows the same-process branch.

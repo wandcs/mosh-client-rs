@@ -622,8 +622,10 @@ Author:
 - Limits: the physical record does not identify send versus receive, raw errno,
   or platform policy. It does not prove every permission failure is temporary.
   Initial failures and unlisted error categories remain fatal, and a permanent
-  denial remains interrupted rather than successful. A fixed-revision physical
-  rerun remains the consumer closing gate.
+  denial remains interrupted rather than successful. A later `ae86bfe` physical
+  lid run followed HarmonyOS's client-process replacement branch and captured
+  no `PermissionDenied`; it verified consumer workspace restoration, not this
+  library's same-Session recovery. That physical closing gate remains pending.
 
 ### Physical client address change after WLAN switching
 
