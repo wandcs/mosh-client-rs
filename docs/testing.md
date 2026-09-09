@@ -159,14 +159,16 @@ changes the client source address, recovers at the RTO boundary to the same
 fixed server endpoint, processes the server acknowledgement, schedules the
 return acknowledgement, and cancels without queued work.
 
-The Session unit suite injects send outcomes only at the private concrete UDP
-send boundary. It proves that an active Session defers the ADR 0011 temporary
-error classes by at least one second without committing SSP or scheduler state,
-while permanent and ambiguous errors remain fatal. Separate cases cover prompt
-cancellation during that wait, the existing four-second graceful-close bound,
-a partial fragmented attempt replaced under a fresh identifier, and retry
-isolation across two Sessions. The hook is compiled only for crate tests and is
-not a production transport abstraction.
+The Session unit suite injects I/O outcomes only at the private concrete UDP
+send and receive boundaries. It proves that an active Session defers the five
+explicit ADR 0011 and 0012 categories without committing failed send plans or
+busy-polling a failed receiver. Initial failures and unlisted or ambiguous
+errors remain fatal. Separate cases cover authenticated receive recovery on the
+same socket, prompt cancellation during a deferred receive, the existing
+four-second graceful-close bound under repeated permission failures, a partial
+fragmented send replaced under a fresh identifier, and retry isolation across
+two Sessions. The hook is compiled only for crate tests and is not a production
+transport abstraction.
 
 A local stock 1.4.0 Session fixture adds black-box recovery evidence. A
 test-only loopback relay drops both directions for 1.5 seconds, switches the
@@ -333,7 +335,9 @@ the no-ACK window, final-output drain, and server process cleanup. A graceful
 owner keeps consuming output until task completion; hard cancellation remains
 the escape path when presentation is abandoned. These tests do not prove a
 long outage, physical address change, the precise `ErrorKind` produced by every
-HarmonyOS network transition, or LeanTTY lifecycle integration.
+HarmonyOS network transition, or LeanTTY lifecycle integration. The retained
+lid-close record identifies `PermissionDenied` but not its I/O direction, raw
+errno, or platform policy; one fixed-revision physical rerun remains required.
 
 ## Black-box stock-server interoperability
 

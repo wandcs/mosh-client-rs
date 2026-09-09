@@ -1,4 +1,4 @@
-use super::super::driver::{TransportSendOutcome, is_temporary_local_send_error};
+use super::super::driver::{TransportSendOutcome, is_recoverable_established_io_error};
 use super::super::*;
 
 use std::io::ErrorKind;
@@ -171,7 +171,7 @@ fn initial_attachment_timeout_is_reported_before_any_peer_state() {
 }
 
 #[test]
-fn active_session_retries_a_temporary_local_send_error_without_spinning() {
+fn active_session_retries_permission_denied_send_without_spinning() {
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -188,7 +188,7 @@ fn active_session_retries_a_temporary_local_send_error_without_spinning() {
                 .await
                 .unwrap();
         driver.state_tx.send_replace(SessionState::Active);
-        driver.inject_send_error(ErrorKind::NetworkUnreachable);
+        driver.inject_send_error(ErrorKind::PermissionDenied);
         let SessionChannels {
             commands: _commands,
             output: _output,
@@ -221,31 +221,34 @@ fn active_session_retries_a_temporary_local_send_error_without_spinning() {
 }
 
 #[test]
-fn local_send_error_allowlist_excludes_permanent_and_ambiguous_failures() {
+fn established_io_error_allowlist_excludes_other_permanent_and_ambiguous_failures() {
     for kind in [
         ErrorKind::NetworkDown,
         ErrorKind::NetworkUnreachable,
         ErrorKind::HostUnreachable,
         ErrorKind::AddrNotAvailable,
+        ErrorKind::PermissionDenied,
     ] {
-        assert!(is_temporary_local_send_error(kind), "missing {kind:?}");
+        assert!(
+            is_recoverable_established_io_error(kind),
+            "missing {kind:?}"
+        );
     }
     for kind in [
         ErrorKind::Other,
-        ErrorKind::PermissionDenied,
         ErrorKind::NotConnected,
         ErrorKind::ConnectionReset,
         ErrorKind::WriteZero,
     ] {
         assert!(
-            !is_temporary_local_send_error(kind),
+            !is_recoverable_established_io_error(kind),
             "overly broad recovery for {kind:?}"
         );
     }
 }
 
 #[test]
-fn permanent_local_send_error_still_terminates_an_active_session() {
+fn other_local_send_error_still_terminates_an_active_session() {
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -261,17 +264,111 @@ fn permanent_local_send_error_still_terminates_an_active_session() {
                 .await
                 .unwrap();
         driver.state_tx.send_replace(SessionState::Active);
-        driver.inject_send_error(ErrorKind::PermissionDenied);
+        driver.inject_send_error(ErrorKind::Other);
 
-        assert_eq!(
-            driver.run().await,
-            Err(DriverError::Io(ErrorKind::PermissionDenied))
-        );
+        assert_eq!(driver.run().await, Err(DriverError::Io(ErrorKind::Other)));
     });
 }
 
 #[test]
-fn temporary_send_error_before_attachment_remains_explicit() {
+fn active_session_defers_permission_denied_receive_and_resumes_on_the_same_socket() {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    runtime.block_on(async {
+        let server = UdpSocket::bind(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 0))
+            .await
+            .unwrap();
+        let port = server.local_addr().unwrap().port();
+        let bootstrap_text = format!("MOSH CONNECT {port} 4NeCCgvZFe2RnPgrcU1PQw");
+        let bootstrap = Bootstrap::parse(Ipv4Addr::LOCALHOST, bootstrap_text.as_bytes()).unwrap();
+        let (mut driver, channels) =
+            SessionDriver::connect(bootstrap, 80, 24, PredictionMode::Adaptive)
+                .await
+                .unwrap();
+        driver.state_tx.send_replace(SessionState::Active);
+        driver.inject_receive_errors([ErrorKind::PermissionDenied]);
+        let SessionChannels {
+            commands: _commands,
+            output: _output,
+            cancellation,
+            graceful_close: _graceful_close,
+            state: _state,
+            mut reachability,
+        } = channels;
+        let task = tokio::spawn(driver.run());
+
+        let key = SessionKey::new(STOCK_1_4_0_KEY_BYTES);
+        let mut receiver = PacketReceiver::new(&key, Direction::ClientToServer);
+        let codec = PacketCodec::new(&key);
+        let mut inbound = [0_u8; MAX_DATAGRAM_BYTES];
+        let (initial, client_addr) =
+            receive_instruction(&server, &mut receiver, &mut inbound).await;
+        let response = TransportInstruction {
+            protocol_version: PROTOCOL_VERSION,
+            base_state: 0,
+            new_state: 1,
+            acknowledged_state: initial.new_state,
+            discard_before_state: 0,
+            state_difference: Vec::new(),
+            chaff: vec![0],
+        };
+        send_server_instruction(&server, &codec, client_addr, &response).await;
+
+        assert!(
+            tokio::time::timeout(Duration::from_millis(250), reachability.changed())
+                .await
+                .is_err(),
+            "temporary receive error retried without bounded pacing"
+        );
+        tokio::time::timeout(Duration::from_secs(2), reachability.changed())
+            .await
+            .expect("active Session did not resume UDP receive after the retry delay")
+            .unwrap();
+        assert_eq!(
+            *reachability.borrow_and_update(),
+            SessionReachability::Responsive
+        );
+        assert!(!task.is_finished());
+
+        cancellation.send_replace(true);
+        assert_eq!(task.await.unwrap().unwrap(), SessionExit::Cancelled);
+    });
+}
+
+#[test]
+fn recoverable_receive_errors_before_attachment_remain_explicit() {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    runtime.block_on(async {
+        for kind in [
+            ErrorKind::NetworkDown,
+            ErrorKind::NetworkUnreachable,
+            ErrorKind::HostUnreachable,
+            ErrorKind::AddrNotAvailable,
+            ErrorKind::PermissionDenied,
+        ] {
+            let bootstrap = Bootstrap::parse(
+                Ipv4Addr::LOCALHOST,
+                b"MOSH CONNECT 65000 4NeCCgvZFe2RnPgrcU1PQw",
+            )
+            .unwrap();
+            let (mut driver, _channels) =
+                SessionDriver::connect(bootstrap, 80, 24, PredictionMode::Adaptive)
+                    .await
+                    .unwrap();
+            driver.inject_receive_errors([kind]);
+
+            assert_eq!(driver.run().await, Err(DriverError::Io(kind)));
+        }
+    });
+}
+
+#[test]
+fn other_receive_error_still_terminates_an_active_session() {
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -286,12 +383,75 @@ fn temporary_send_error_before_attachment_remains_explicit() {
             SessionDriver::connect(bootstrap, 80, 24, PredictionMode::Adaptive)
                 .await
                 .unwrap();
-        driver.inject_send_error(ErrorKind::NetworkUnreachable);
+        driver.state_tx.send_replace(SessionState::Active);
+        driver.inject_receive_errors([ErrorKind::Other]);
 
+        assert_eq!(driver.run().await, Err(DriverError::Io(ErrorKind::Other)));
+    });
+}
+
+#[test]
+fn cancellation_preempts_a_deferred_permission_denied_receive_retry() {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    runtime.block_on(async {
+        let bootstrap = Bootstrap::parse(
+            Ipv4Addr::LOCALHOST,
+            b"MOSH CONNECT 65000 4NeCCgvZFe2RnPgrcU1PQw",
+        )
+        .unwrap();
+        let (mut driver, channels) =
+            SessionDriver::connect(bootstrap, 80, 24, PredictionMode::Adaptive)
+                .await
+                .unwrap();
+        driver.state_tx.send_replace(SessionState::Active);
+        driver.inject_receive_errors([ErrorKind::PermissionDenied]);
+        let cancellation = channels.cancellation;
+        let task = tokio::spawn(driver.run());
+
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert!(!task.is_finished());
+        cancellation.send_replace(true);
         assert_eq!(
-            driver.run().await,
-            Err(DriverError::Io(ErrorKind::NetworkUnreachable))
+            tokio::time::timeout(Duration::from_millis(250), task)
+                .await
+                .expect("cancellation waited for the deferred receive deadline")
+                .unwrap()
+                .unwrap(),
+            SessionExit::Cancelled
         );
+    });
+}
+
+#[test]
+fn recoverable_send_errors_before_attachment_remain_explicit() {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    runtime.block_on(async {
+        for kind in [
+            ErrorKind::NetworkDown,
+            ErrorKind::NetworkUnreachable,
+            ErrorKind::HostUnreachable,
+            ErrorKind::AddrNotAvailable,
+            ErrorKind::PermissionDenied,
+        ] {
+            let bootstrap = Bootstrap::parse(
+                Ipv4Addr::LOCALHOST,
+                b"MOSH CONNECT 65000 4NeCCgvZFe2RnPgrcU1PQw",
+            )
+            .unwrap();
+            let (mut driver, _channels) =
+                SessionDriver::connect(bootstrap, 80, 24, PredictionMode::Adaptive)
+                    .await
+                    .unwrap();
+            driver.inject_send_error(kind);
+
+            assert_eq!(driver.run().await, Err(DriverError::Io(kind)));
+        }
     });
 }
 
@@ -355,6 +515,38 @@ fn graceful_close_keeps_its_bound_during_temporary_send_failures() {
             tokio::time::timeout(Duration::from_millis(4_500), driver.run())
                 .await
                 .expect("temporary send failures exceeded the graceful-close bound")
+                .unwrap(),
+            SessionExit::LocalClosed
+        );
+        assert!(started.elapsed() >= Duration::from_millis(3_900));
+    });
+}
+
+#[test]
+fn graceful_close_keeps_its_bound_during_permission_denied_receive_failures() {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    runtime.block_on(async {
+        let bootstrap = Bootstrap::parse(
+            Ipv4Addr::LOCALHOST,
+            b"MOSH CONNECT 65000 4NeCCgvZFe2RnPgrcU1PQw",
+        )
+        .unwrap();
+        let (mut driver, channels) =
+            SessionDriver::connect(bootstrap, 80, 24, PredictionMode::Adaptive)
+                .await
+                .unwrap();
+        driver.state_tx.send_replace(SessionState::Active);
+        driver.inject_receive_errors(std::iter::repeat_n(ErrorKind::PermissionDenied, 8));
+        channels.graceful_close.send_replace(true);
+        let started = Instant::now();
+
+        assert_eq!(
+            tokio::time::timeout(Duration::from_millis(4_500), driver.run())
+                .await
+                .expect("receive retries exceeded the graceful-close bound")
                 .unwrap(),
             SessionExit::LocalClosed
         );
@@ -512,6 +704,89 @@ fn temporary_send_retry_is_isolated_between_sessions() {
             .await
             .expect("failing Session did not retry independently")
             .unwrap();
+
+        first_cancellation.send_replace(true);
+        second_cancellation.send_replace(true);
+        assert_eq!(first_task.await.unwrap().unwrap(), SessionExit::Cancelled);
+        assert_eq!(second_task.await.unwrap().unwrap(), SessionExit::Cancelled);
+    });
+}
+
+#[test]
+fn permission_denied_receive_retry_is_isolated_between_sessions() {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    runtime.block_on(async {
+        let first_server = UdpSocket::bind(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 0))
+            .await
+            .unwrap();
+        let second_server = UdpSocket::bind(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 0))
+            .await
+            .unwrap();
+        let first_bootstrap = Bootstrap::parse(
+            Ipv4Addr::LOCALHOST,
+            format!(
+                "MOSH CONNECT {} 4NeCCgvZFe2RnPgrcU1PQw",
+                first_server.local_addr().unwrap().port()
+            )
+            .as_bytes(),
+        )
+        .unwrap();
+        let second_bootstrap = Bootstrap::parse(
+            Ipv4Addr::LOCALHOST,
+            format!(
+                "MOSH CONNECT {} 4NeCCgvZFe2RnPgrcU1PQw",
+                second_server.local_addr().unwrap().port()
+            )
+            .as_bytes(),
+        )
+        .unwrap();
+        let (mut first, first_channels) =
+            SessionDriver::connect(first_bootstrap, 80, 24, PredictionMode::Adaptive)
+                .await
+                .unwrap();
+        let (second, second_channels) =
+            SessionDriver::connect(second_bootstrap, 80, 24, PredictionMode::Adaptive)
+                .await
+                .unwrap();
+        first.state_tx.send_replace(SessionState::Active);
+        second.state_tx.send_replace(SessionState::Active);
+        first.inject_receive_errors([ErrorKind::PermissionDenied]);
+        let first_cancellation = first_channels.cancellation;
+        let second_cancellation = second_channels.cancellation;
+        let mut second_reachability = second_channels.reachability;
+        let first_task = tokio::spawn(first.run());
+        let second_task = tokio::spawn(second.run());
+
+        let key = SessionKey::new(STOCK_1_4_0_KEY_BYTES);
+        let mut receiver = PacketReceiver::new(&key, Direction::ClientToServer);
+        let codec = PacketCodec::new(&key);
+        let mut inbound = [0_u8; MAX_DATAGRAM_BYTES];
+        let (initial, client_addr) =
+            receive_instruction(&second_server, &mut receiver, &mut inbound).await;
+        let response = TransportInstruction {
+            protocol_version: PROTOCOL_VERSION,
+            base_state: 0,
+            new_state: 1,
+            acknowledged_state: initial.new_state,
+            discard_before_state: 0,
+            state_difference: Vec::new(),
+            chaff: vec![0],
+        };
+        send_server_instruction(&second_server, &codec, client_addr, &response).await;
+
+        tokio::time::timeout(Duration::from_millis(250), second_reachability.changed())
+            .await
+            .expect("one Session's receive delay leaked into another Session")
+            .unwrap();
+        assert_eq!(
+            *second_reachability.borrow_and_update(),
+            SessionReachability::Responsive
+        );
+        assert!(!first_task.is_finished());
+        assert!(!second_task.is_finished());
 
         first_cancellation.send_replace(true);
         second_cancellation.send_replace(true);

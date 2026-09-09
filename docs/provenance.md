@@ -591,6 +591,40 @@ Author:
   observed failing category; broad or platform-specific errors still require
   separate evidence.
 
+### Physical lid-close permission failure in an established Session
+
+- Date: 2026-09-10.
+- Behavior: about one second after a physical HarmonyOS PC lid close hid the
+  application window, an established Session ended on
+  `ErrorKind::PermissionDenied` while the application process, stock server,
+  and remote PTY remained alive.
+- Evidence class: project-controlled physical consumer experiment, Rust's
+  public error-category contract, and upstream architecture comparison.
+- Source:
+  [LeanTTY lid-close diagnostic](fixtures/leantty-physical-lid-permission-denied.md),
+  Rust's [`std::io::ErrorKind`](https://doc.rust-lang.org/std/io/enum.ErrorKind.html),
+  the public [Mosh behavior contract](https://mosh.org/), and the stock client's
+  [`stmclient.cc`](https://github.com/mobile-shell/mosh/blob/mosh-1.4.0/src/frontend/stmclient.cc)
+  and
+  [`network.cc`](https://github.com/mobile-shell/mosh/blob/mosh-1.4.0/src/network/network.cc)
+  as comparison evidence only.
+- Observed versions: `mosh-client-rs` `v0.1.0`, unmodified stock
+  `mosh-server` 1.4.0, and one HAD-W32 ARM64 HarmonyOS PC running
+  OpenHarmony 6.1.1.135.
+- Implementation consequence: after `Active`, recover the five explicitly
+  listed local I/O categories at both send and receive boundaries. Keep send
+  plans uncommitted; delay repeated receive polling through the existing RTO
+  cadence; retain the same socket and protocol state; require authenticated
+  progress before reporting recovery.
+- Architecture comparison: the stock client keeps running after network
+  exceptions and applies a short delay. Project code, tests, wording, and file
+  organization remain independently written.
+- Limits: the physical record does not identify send versus receive, raw errno,
+  or platform policy. It does not prove every permission failure is temporary.
+  Initial failures and unlisted error categories remain fatal, and a permanent
+  denial remains interrupted rather than successful. A fixed-revision physical
+  rerun remains the consumer closing gate.
+
 ### Physical client address change after WLAN switching
 
 - Date: 2026-09-04; imported on 2026-09-05.

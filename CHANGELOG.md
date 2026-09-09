@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Preserve an established Session when HarmonyOS temporarily reports
+  `PermissionDenied` from UDP I/O. Send plans remain uncommitted, receive
+  polling is rate-limited, and the same socket and protocol state resume only
+  after authenticated peer progress.
+
 ## 0.1.0
 
 First release of the independent, unofficial `mosh-client` Rust library.

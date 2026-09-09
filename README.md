@@ -42,9 +42,10 @@ while the confirmed prediction epoch removes that visible network delay and
 still converges to a stock-server marker.
 
 Established Sessions retain their protocol and terminal state across a narrow
-allowlist of local UDP interface- and route-loss send errors. Failed sends stay
-uncommitted and retry through the existing bounded scheduler; other I/O errors
-remain explicit failures.
+allowlist of local UDP interface, route, address, and physically observed
+permission failures. Failed sends stay uncommitted, and receive failures pause
+polling; both retry at a bounded cadence on the same socket. Initial connection
+errors and other I/O categories remain explicit failures.
 
 The Phase 2 viability gate found no material terminal-correctness or recovery
 deficit within the declared local compatibility scope. Public contract tests

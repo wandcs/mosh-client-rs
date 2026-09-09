@@ -86,12 +86,14 @@ black-box fixtures also cover the reserved close target in both
 directions, the peer acknowledgement shape, and the bounded no-ACK wait.
 Public reachability now reports recent-contact and recent-reply warnings without
 treating silence as close. Established Sessions also preserve state across the
-selected temporary local UDP send errors in ADR 0011. LeanTTY's development
-records now cover [physical WLAN recovery](fixtures/leantty-physical-local-send-recovery.md)
-and [a real address change](fixtures/leantty-physical-network-switch.md) on one
-HAD-W32 PC. Those fixtures retain the same Session and remote PTY. Longer
-outages, other devices, and other network topologies require separate evidence;
-whole-Session display restoration remains the consumer's responsibility.
+selected local UDP I/O errors in ADRs 0011 and 0012. LeanTTY's development
+records now cover [physical WLAN recovery](fixtures/leantty-physical-local-send-recovery.md),
+[a real address change](fixtures/leantty-physical-network-switch.md), and the
+[observed lid-close permission failure](fixtures/leantty-physical-lid-permission-denied.md)
+on one HAD-W32 PC. The first two fixtures retain the same Session and remote
+PTY; the fixed-revision lid-close rerun remains pending. Longer outages, other
+devices, and other network topologies require separate evidence; whole-Session
+display restoration remains the consumer's responsibility.
 
 The full evidence matrix, offline-first policy, runtime isolation cases, VT
 output contract, and physical LeanTTY acceptance are defined in

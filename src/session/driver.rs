@@ -1,5 +1,5 @@
 use core::future::Future as _;
-use core::task::{Poll, ready};
+use core::task::Poll;
 use std::collections::BTreeMap;
 #[cfg(test)]
 use std::collections::VecDeque;
@@ -167,6 +167,7 @@ pub(crate) struct SessionDriver {
     pub(super) output_requested: bool,
     force_full_repaint: bool,
     pub(super) started_at: Instant,
+    receive_not_before_ms: u64,
     command_rx: mpsc::Receiver<SessionCommand>,
     pub(super) output_tx: mpsc::Sender<Vec<u8>>,
     cancellation_rx: watch::Receiver<bool>,
@@ -177,6 +178,8 @@ pub(crate) struct SessionDriver {
     final_terminal: Option<TerminalState>,
     #[cfg(test)]
     send_outcomes: VecDeque<Option<ErrorKind>>,
+    #[cfg(test)]
+    receive_errors: VecDeque<ErrorKind>,
 }
 
 impl SessionDriver {
@@ -230,6 +233,7 @@ impl SessionDriver {
                 output_requested: false,
                 force_full_repaint: false,
                 started_at: Instant::now(),
+                receive_not_before_ms: 0,
                 command_rx,
                 output_tx,
                 cancellation_rx,
@@ -240,6 +244,8 @@ impl SessionDriver {
                 final_terminal: None,
                 #[cfg(test)]
                 send_outcomes: VecDeque::new(),
+                #[cfg(test)]
+                receive_errors: VecDeque::new(),
             },
             SessionChannels {
                 commands: command_tx,
@@ -287,19 +293,27 @@ impl SessionDriver {
                     }
                 }
                 SchedulerPoll::Pending { wake_at_ms } => {
-                    let wake_at_ms = self
+                    let mut wake_at_ms = self
                         .prediction
                         .next_deadline_ms()
                         .map_or(wake_at_ms, |prediction| wake_at_ms.min(prediction));
-                    let wake_at_ms = self
+                    wake_at_ms = self
                         .reachability
                         .next_deadline_ms()?
                         .map_or(wake_at_ms, |reachability| wake_at_ms.min(reachability));
+                    let receive_enabled = now_ms >= self.receive_not_before_ms;
+                    if !receive_enabled {
+                        wake_at_ms = wake_at_ms.min(self.receive_not_before_ms);
+                    }
                     let wake_at = self
                         .started_at
                         .checked_add(Duration::from_millis(wake_at_ms))
                         .ok_or(DriverError::ClockExhausted)?;
                     let needs_output = self.output_requested;
+                    #[cfg(test)]
+                    let receive_error = receive_enabled
+                        .then(|| self.receive_errors.pop_front())
+                        .flatten();
                     match wait_next(
                         &self.socket,
                         WaitChannels {
@@ -311,12 +325,17 @@ impl SessionDriver {
                         &mut inbound,
                         wake_at,
                         needs_output,
+                        receive_enabled,
+                        #[cfg(test)]
+                        receive_error,
                     )
                     .await
                     {
                         Wake::Command(command) => self.handle_command(command)?,
                         Wake::Datagram(result) => {
-                            let (length, source) = result?;
+                            let Some((length, source)) = self.classify_receive(result)? else {
+                                continue;
+                            };
                             if self.handle_datagram(&mut inbound[..length], source)?
                                 == DatagramOutcome::RemoteShutdown
                             {
@@ -431,7 +450,8 @@ impl SessionDriver {
             TransportSendOutcome::Sent => {}
             TransportSendOutcome::Cancelled => return Ok(()),
             TransportSendOutcome::Deferred => {
-                self.defer_temporary_send(now_ms)?;
+                let failed_at_ms = self.now_ms()?;
+                self.defer_temporary_send(failed_at_ms)?;
                 return Ok(());
             }
         }
@@ -482,7 +502,7 @@ impl SessionDriver {
                 Ok(sent) => sent,
                 Err(error)
                     if *self.state_tx.borrow() == SessionState::Active
-                        && is_temporary_local_send_error(error.kind()) =>
+                        && is_recoverable_established_io_error(error.kind()) =>
                 {
                     return Ok(TransportSendOutcome::Deferred);
                 }
@@ -497,12 +517,40 @@ impl SessionDriver {
     }
 
     fn defer_temporary_send(&mut self, now_ms: u64) -> Result<(), DriverError> {
-        let delay_ms = self.temporary_send_retry_ms();
+        let delay_ms = self.io_retry_ms();
         self.scheduler.defer_send(now_ms, delay_ms)?;
         Ok(())
     }
 
-    fn temporary_send_retry_ms(&self) -> u64 {
+    fn defer_receive(&mut self, now_ms: u64) -> Result<(), DriverError> {
+        self.receive_not_before_ms = now_ms
+            .checked_add(self.io_retry_ms())
+            .ok_or(DriverError::ClockExhausted)?;
+        Ok(())
+    }
+
+    fn classify_receive(
+        &mut self,
+        result: std::io::Result<(usize, SocketAddr)>,
+    ) -> Result<Option<(usize, SocketAddr)>, DriverError> {
+        match result {
+            Ok(received) => {
+                self.receive_not_before_ms = 0;
+                Ok(Some(received))
+            }
+            Err(error)
+                if *self.state_tx.borrow() == SessionState::Active
+                    && is_recoverable_established_io_error(error.kind()) =>
+            {
+                let failed_at_ms = self.now_ms()?;
+                self.defer_receive(failed_at_ms)?;
+                Ok(None)
+            }
+            Err(error) => Err(error.into()),
+        }
+    }
+
+    fn io_retry_ms(&self) -> u64 {
         self.datagram_timing
             .estimator()
             .retransmission_timeout_ms()
@@ -528,6 +576,11 @@ impl SessionDriver {
         outcomes: impl IntoIterator<Item = Option<ErrorKind>>,
     ) {
         self.send_outcomes.extend(outcomes);
+    }
+
+    #[cfg(test)]
+    pub(super) fn inject_receive_errors(&mut self, errors: impl IntoIterator<Item = ErrorKind>) {
+        self.receive_errors.extend(errors);
     }
 
     #[cfg(test)]
@@ -727,19 +780,28 @@ impl SessionDriver {
                     }
                     TransportSendOutcome::Cancelled => return Ok(SessionExit::Cancelled),
                     TransportSendOutcome::Deferred => {
-                        let retry_ms = self.temporary_send_retry_ms();
-                        next_send_ms = now_ms
+                        let failed_at_ms = self.now_ms()?;
+                        let retry_ms = self.io_retry_ms();
+                        next_send_ms = failed_at_ms
                             .checked_add(retry_ms)
                             .ok_or(DriverError::ClockExhausted)?;
                     }
                 }
             }
 
-            let wake_ms = next_send_ms.min(deadline_ms);
+            let receive_enabled = now_ms >= self.receive_not_before_ms;
+            let mut wake_ms = next_send_ms.min(deadline_ms);
+            if !receive_enabled {
+                wake_ms = wake_ms.min(self.receive_not_before_ms);
+            }
             let wake_at = self
                 .started_at
                 .checked_add(Duration::from_millis(wake_ms))
                 .ok_or(DriverError::ClockExhausted)?;
+            #[cfg(test)]
+            let receive_error = receive_enabled
+                .then(|| self.receive_errors.pop_front())
+                .flatten();
             match wait_next(
                 &self.socket,
                 WaitChannels {
@@ -751,12 +813,17 @@ impl SessionDriver {
                 &mut inbound,
                 wake_at,
                 self.output_requested,
+                receive_enabled,
+                #[cfg(test)]
+                receive_error,
             )
             .await
             {
                 Wake::Command(command) => self.handle_command(command)?,
                 Wake::Datagram(result) => {
-                    let (length, source) = result?;
+                    let Some((length, source)) = self.classify_receive(result)? else {
+                        continue;
+                    };
                     let Some(instruction) = self.decode_datagram(&mut inbound[..length], source)?
                     else {
                         continue;
@@ -892,13 +959,14 @@ pub(super) enum TransportSendOutcome {
     Deferred,
 }
 
-pub(super) fn is_temporary_local_send_error(kind: ErrorKind) -> bool {
+pub(super) fn is_recoverable_established_io_error(kind: ErrorKind) -> bool {
     matches!(
         kind,
         ErrorKind::NetworkDown
             | ErrorKind::NetworkUnreachable
             | ErrorKind::HostUnreachable
             | ErrorKind::AddrNotAvailable
+            | ErrorKind::PermissionDenied
     )
 }
 
@@ -925,6 +993,8 @@ async fn wait_next(
     inbound: &mut [u8],
     wake_at: Instant,
     needs_output: bool,
+    receive_enabled: bool,
+    #[cfg(test)] receive_error: Option<ErrorKind>,
 ) -> Wake {
     let WaitChannels {
         commands,
@@ -933,11 +1003,13 @@ async fn wait_next(
         graceful_close,
     } = channels;
     let mut command = Box::pin(commands.recv());
-    let mut datagram = Box::pin(socket.recv_from(inbound));
+    let mut datagram = receive_enabled.then(|| Box::pin(socket.recv_from(inbound)));
     let mut output = needs_output.then(|| Box::pin(output.clone().reserve_owned()));
     let mut cancellation = Box::pin(cancellation.changed());
     let mut graceful_close = graceful_close.map(|close| Box::pin(close.changed()));
     let mut timer = Box::pin(tokio::time::sleep_until(wake_at));
+    #[cfg(test)]
+    let mut receive_error = receive_error;
 
     poll_fn(|context| {
         if let Poll::Ready(Ok(())) = cancellation.as_mut().poll(context) {
@@ -965,7 +1037,16 @@ async fn wait_next(
                 Err(_) => Wake::OwnerDropped,
             });
         }
-        Poll::Ready(Wake::Datagram(ready!(datagram.as_mut().poll(context))))
+        #[cfg(test)]
+        if let Some(kind) = receive_error.take() {
+            return Poll::Ready(Wake::Datagram(Err(std::io::Error::from(kind))));
+        }
+        if let Some(datagram) = datagram.as_mut()
+            && let Poll::Ready(received) = datagram.as_mut().poll(context)
+        {
+            return Poll::Ready(Wake::Datagram(received));
+        }
+        Poll::Pending
     })
     .await
 }

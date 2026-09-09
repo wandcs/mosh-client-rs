@@ -5,7 +5,27 @@ does not authorize work before its entry gate passes. Every item must follow
 [the project principles](project-principles.md); completing a checklist does not
 justify violating them.
 
-## Current work: 0.1.0 release completed
+## Current work: post-0.1.0 lid-close recovery
+
+LeanTTY's 2026-09-10 physical diagnostic identified
+`ErrorKind::PermissionDenied` when a hidden, established Session was lost after
+lid close while the process, stock server, and remote PTY remained alive. ADR
+0012 defines the narrow follow-up to ADR 0011.
+
+- [x] Import a sanitized physical evidence record without claiming an unknown
+  direction, raw errno, or platform policy.
+- [x] Recover the five explicit local I/O categories at both send and receive
+  boundaries only after the Session is active.
+- [x] Pace repeated receive errors through the existing RTO cadence while
+  preserving the socket, protocol state, cancellation, and bounded close.
+- [x] Cover initial and unlisted fatal errors, authenticated recovery on the
+  same socket, close bounds, cancellation, and two-Session isolation.
+- [ ] Pin the fixed revision in LeanTTY and run one named operator lid-close,
+  reopen, recovery-input, and same-PTY scenario on the physical HAD-W32 PC.
+
+No new release or tag is authorized by this maintenance item.
+
+## 0.1.0 release completed
 
 The maintainer authorized release preparation and formal publication on
 2026-09-05, including Rust 1.88 as the minimum supported compiler, and selected

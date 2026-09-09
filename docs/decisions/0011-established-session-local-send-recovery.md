@@ -3,6 +3,10 @@
 - Status: Accepted
 - Date: 2026-09-02
 
+ADR 0012 later extends established-Session recovery to the physically observed
+`PermissionDenied` category and to receive-side failures. This decision still
+governs failed-send commit and fragmentation behavior.
+
 ## Context
 
 LeanTTY reproduced MCRS-003 on a physical ARM64 HarmonyOS PC. After a stock

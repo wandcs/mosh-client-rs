@@ -106,7 +106,7 @@ pending scalars and uses the one retained base rather than per-scalar screens.
 | Initial retransmission timeout | 1 s | RFC 6298 default before the first RTT sample |
 | Minimum retransmission timeout | 50 ms | Published Mosh design |
 | Maximum retransmission timeout | 5 s | Local recovery-cadence bound |
-| Temporary local send retry | Current RTO, with a 1 s floor and 5 s ceiling | ADR 0011 established-Session recovery policy |
+| Recoverable established-Session I/O retry | Current RTO, with a 1 s floor and 5 s ceiling | ADRs 0011 and 0012 recovery policy |
 | Accepted RTT sample | 0–60 s | Local 16-bit-wrap ambiguity bound; larger samples are ignored |
 | Timestamp reply age | At most 1 s | Published Mosh design |
 | Local state collection | At most 15 ms | Published Mosh design |
@@ -128,3 +128,8 @@ may change reachability but never closes the Session or changes lifecycle.
 An outgoing timestamp reply is omitted after one second, when no peer timestamp
 exists, or when the adjusted value would collide with the wire's `0xffff`
 no-reply marker.
+
+A recoverable receive error disables receive polling until its retry deadline;
+it does not block commands, due sends, output, cancellation, or graceful-close
+progress. Repeated immediate errors therefore remain bounded by the same retry
+cadence.
