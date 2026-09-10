@@ -5,7 +5,7 @@ does not authorize work before its entry gate passes. Every item must follow
 [the project principles](project-principles.md); completing a checklist does not
 justify violating them.
 
-## Current work: 0.1.1 release
+## 0.1.1 release completed
 
 The maintainer authorized formal 0.1.1 publication through the existing GitHub
 Release process on 2026-09-10. The release contains the `ae86bfe`
@@ -19,13 +19,16 @@ Release process on 2026-09-10. The release contains the `ae86bfe`
   bounded fuzz campaigns, and the ARM64 OHOS release build.
 - [x] Inspect the package contents, rebuild the unpacked package on Rust 1.88,
   and pass a clean-candidate publication dry run.
-- [ ] Push the candidate and immutable `v0.1.1` tag, create the GitHub Release
+- [x] Push the candidate and immutable `v0.1.1` tag, create the GitHub Release
   with the inspected package and checksum, and read back every public identity.
-- [ ] Verify a fresh Rust 1.88 consumer against the public tag and record the
+- [x] Verify a fresh Rust 1.88 consumer against the public tag and record the
   completed publication without changing the tag.
 
 The existing release channel does not upload to crates.io. No registry
-publication is authorized by this item.
+publication was made. The
+[0.1.1 release](https://github.com/wandcs/mosh-client-rs/releases/tag/v0.1.1)
+is public, and its [release review](releases/0.1.1.md) records the verified
+commit, package digest, public readback, and remaining physical-test boundary.
 
 ## Post-0.1.0 lid-close recovery
 
