@@ -13,11 +13,11 @@ Release process on 2026-09-10. The release contains the `ae86bfe`
 
 - [x] Select `mosh-client` 0.1.1 and retain Rust 1.88, the public API,
   dependency versions, protocol behavior, and resource limits.
-- [ ] Pass current-stable and Rust 1.88 format, lint, test, rustdoc, and doctest
+- [x] Pass current-stable and Rust 1.88 format, lint, test, rustdoc, and doctest
   gates on the clean candidate.
-- [ ] Pass every serial stock 1.4.0 fixture, dependency and secret audits,
+- [x] Pass every serial stock 1.4.0 fixture, dependency and secret audits,
   bounded fuzz campaigns, and the ARM64 OHOS release build.
-- [ ] Inspect the package contents, rebuild the unpacked package on Rust 1.88,
+- [x] Inspect the package contents, rebuild the unpacked package on Rust 1.88,
   and pass a clean-candidate publication dry run.
 - [ ] Push the candidate and immutable `v0.1.1` tag, create the GitHub Release
   with the inspected package and checksum, and read back every public identity.
