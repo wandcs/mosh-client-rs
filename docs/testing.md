@@ -448,7 +448,7 @@ These commands run in the default WSL distribution at
 `/mnt/c/repos/mosh-client-rs`.
 
 For release candidates, also run the declared minimum compiler exactly. Version
-0.1.0 requires Rust 1.88.0; a current-stable pass cannot replace this check:
+0.1.1 requires Rust 1.88.0; a current-stable pass cannot replace this check:
 
 ```bash
 cargo +1.88.0 fmt --all --check

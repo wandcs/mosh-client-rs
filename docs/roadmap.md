@@ -5,7 +5,29 @@ does not authorize work before its entry gate passes. Every item must follow
 [the project principles](project-principles.md); completing a checklist does not
 justify violating them.
 
-## Current work: post-0.1.0 lid-close recovery
+## Current work: 0.1.1 release
+
+The maintainer authorized formal 0.1.1 publication through the existing GitHub
+Release process on 2026-09-10. The release contains the `ae86bfe`
+`PermissionDenied` recovery change and its scoped evidence.
+
+- [x] Select `mosh-client` 0.1.1 and retain Rust 1.88, the public API,
+  dependency versions, protocol behavior, and resource limits.
+- [ ] Pass current-stable and Rust 1.88 format, lint, test, rustdoc, and doctest
+  gates on the clean candidate.
+- [ ] Pass every serial stock 1.4.0 fixture, dependency and secret audits,
+  bounded fuzz campaigns, and the ARM64 OHOS release build.
+- [ ] Inspect the package contents, rebuild the unpacked package on Rust 1.88,
+  and pass a clean-candidate publication dry run.
+- [ ] Push the candidate and immutable `v0.1.1` tag, create the GitHub Release
+  with the inspected package and checksum, and read back every public identity.
+- [ ] Verify a fresh Rust 1.88 consumer against the public tag and record the
+  completed publication without changing the tag.
+
+The existing release channel does not upload to crates.io. No registry
+publication is authorized by this item.
+
+## Post-0.1.0 lid-close recovery
 
 LeanTTY's 2026-09-10 physical diagnostic identified
 `ErrorKind::PermissionDenied` when a hidden, established Session was lost after
@@ -32,7 +54,8 @@ result is not evidence for or against ADR 0012. LeanTTY restored its `v0.1.0`
 dependency; the fixed revision remains diagnostic until a physical run reaches
 the same-process branch.
 
-No new release or tag is authorized by this maintenance item.
+This maintenance item supplies the code and evidence for 0.1.1. Its physical
+same-Session verification boundary remains unchanged by publication.
 
 ## 0.1.0 release completed
 

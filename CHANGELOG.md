@@ -2,10 +2,22 @@
 
 ## Unreleased
 
+## 0.1.1
+
 - Preserve an established Session when HarmonyOS temporarily reports
   `PermissionDenied` from UDP I/O. Send plans remain uncommitted, receive
   polling is rate-limited, and the same socket and protocol state resume only
   after authenticated peer progress.
+- Keep initial connection failures and unlisted I/O categories explicit. The
+  public API, dependency versions, and resource limits are unchanged.
+
+The library suite verifies both I/O directions with deterministic injected
+errors. LeanTTY's physical lid-close run followed an application-process
+replacement path, so it does not prove same-Session or same-PTY recovery from
+the observed `PermissionDenied` path.
+
+See [the 0.1.1 release review](docs/releases/0.1.1.md) for evidence and
+publication status.
 
 ## 0.1.0
 

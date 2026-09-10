@@ -7,11 +7,13 @@
 
 ## Current release review
 
-The maintainer authorized and published 0.1.0 on GitHub on 2026-09-05, with Rust
-1.88 as the minimum compiler. The [0.1.0 review](releases/0.1.0.md) supersedes
-the release identity decision below and records the gates and publication.
-The dependency, secret-handling, and OCB3 risk boundaries remain in force. Historical test
-counts and Rust 1.85 results below do not certify the current revision.
+The maintainer authorized 0.1.1 publication on GitHub on 2026-09-10, with Rust
+1.88 as the minimum compiler. The [0.1.1 review](releases/0.1.1.md) records its
+scope, gates, physical-evidence boundary, and publication status. The
+[0.1.0 review](releases/0.1.0.md) remains the immutable record for that version.
+The dependency, secret-handling, and OCB3 risk boundaries remain in force.
+Historical test counts and Rust 1.85 results below do not certify the current
+revision.
 
 ## Historical decision: 2026-08-30
 
