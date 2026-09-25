@@ -151,6 +151,144 @@ fn stock_1_4_0_public_session_preserves_printable_unicode() {
 
 #[test]
 #[ignore = "requires a locally installed stock mosh-server 1.4.0"]
+fn stock_1_4_0_public_session_preserves_server_width_characters() {
+    assert_stock_1_4_0("mosh-server");
+    let (bootstrap, mut server) = start_stock_server("60700:60719");
+
+    stock_runtime().block_on(async {
+        let (mut session, session_task) = Session::connect(bootstrap, 80, 24)
+            .await
+            .expect("public Session setup failed");
+        let task = tokio::spawn(session_task.run());
+        let mut projection = vt100::Parser::new(24, 80, 0);
+
+        wait_for_public_screen(&mut session, &mut projection, "MOSH_SESSION> ").await;
+        for (command, expected) in [
+            (
+                b"printf '\\330\\205-AFTER\\n'\n".as_slice(),
+                "\u{0605}-AFTER",
+            ),
+            (
+                b"printf 'PRE-\\330\\205-AFTER\\n'\n".as_slice(),
+                "PRE-\u{0605}-AFTER",
+            ),
+            (
+                b"printf '\\334\\217-AFTER\\n'\n".as_slice(),
+                "\u{070f}-AFTER",
+            ),
+            (
+                b"printf '\\340\\246\\276-AFTER\\n'\n".as_slice(),
+                "\u{09be}-AFTER",
+            ),
+            (
+                b"printf '\\343\\200\\256-AFTER\\n'\n".as_slice(),
+                "\u{302e}-AFTER",
+            ),
+            (
+                b"printf '\\343\\211\\210-AFTER\\n'\n".as_slice(),
+                "\u{3248}-AFTER",
+            ),
+            (
+                b"printf '\\341\\236\\244-AFTER\\n'\n".as_slice(),
+                "\u{17a4}-AFTER",
+            ),
+            (
+                b"printf '\\341\\237\\230-AFTER\\n'\n".as_slice(),
+                "\u{17d8}-AFTER",
+            ),
+            (
+                b"printf 'X\\342\\265\\277-AFTER\\n'\n".as_slice(),
+                "X\u{2d7f}-AFTER",
+            ),
+        ] {
+            session
+                .send_input(command.to_vec())
+                .await
+                .expect("input queue closed");
+            wait_for_public_screen(&mut session, &mut projection, expected).await;
+            assert_eq!(session.state(), SessionState::Active);
+        }
+
+        session
+            .send_input(b"printf 'WIDTH_CONTINUES_OK\\n'\n".to_vec())
+            .await
+            .expect("follow-up input queue closed");
+        wait_for_public_screen(&mut session, &mut projection, "WIDTH_CONTINUES_OK").await;
+
+        session.resize(81, 25).await.expect("resize was rejected");
+        session
+            .request_repaint()
+            .await
+            .expect("repaint queue closed");
+        let repaint = tokio::time::timeout(Duration::from_secs(2), session.next_output())
+            .await
+            .expect("full repaint was not delivered")
+            .expect("output queue closed before repaint");
+        let mut replacement = vt100::Parser::new(25, 81, 0);
+        replacement.process(&repaint);
+        assert!(replacement.screen().contents().contains("\u{0605}-AFTER"));
+        assert!(
+            replacement
+                .screen()
+                .contents()
+                .contains("WIDTH_CONTINUES_OK")
+        );
+
+        session.cancel();
+        let exit = tokio::time::timeout(Duration::from_secs(2), task)
+            .await
+            .expect("cancelled stock Session did not stop")
+            .unwrap()
+            .expect("stock Session failed");
+        assert_eq!(exit, SessionExit::Cancelled);
+    });
+
+    assert!(server.terminate(), "stock server fixture did not clean up");
+}
+
+#[test]
+#[ignore = "requires a locally installed stock mosh-server 1.4.0"]
+fn stock_1_4_0_public_session_observes_binary_output_before_followup() {
+    assert_stock_1_4_0("mosh-server");
+    let (bootstrap, mut server) = start_stock_server("60720:60739");
+
+    stock_runtime().block_on(async {
+        let (mut session, session_task) = Session::connect(bootstrap, 80, 24)
+            .await
+            .expect("public Session setup failed");
+        let task = tokio::spawn(session_task.run());
+        let mut projection = vt100::Parser::new(24, 80, 0);
+
+        wait_for_public_screen(&mut session, &mut projection, "MOSH_SESSION> ").await;
+        session
+            .send_input(b"cat /bin/ls; printf '\\nBINARY_%s_END\\n' OUTPUT\n".to_vec())
+            .await
+            .expect("binary command queue closed");
+        wait_for_public_screen(&mut session, &mut projection, "BINARY_OUTPUT_END").await;
+        assert_eq!(session.state(), SessionState::Active);
+
+        // Observe the binary output and issue more input before any screen reset.
+        session
+            .send_input(b"printf 'BINARY_%s_OK\\n' FOLLOWUP\n".to_vec())
+            .await
+            .expect("follow-up command queue closed");
+        wait_for_public_screen(&mut session, &mut projection, "BINARY_FOLLOWUP_OK").await;
+        assert_eq!(session.state(), SessionState::Active);
+
+        session.cancel();
+        let exit = tokio::time::timeout(Duration::from_secs(2), task)
+            .await
+            .expect("cancelled stock Session did not stop")
+            .unwrap()
+            .expect("stock Session failed");
+        assert_eq!(exit, SessionExit::Cancelled);
+    });
+
+    assert!(server.terminate(), "stock server fixture did not clean up");
+}
+
+#[test]
+#[ignore = "requires a locally installed stock mosh-server 1.4.0"]
 fn stock_1_4_0_public_session_gracefully_closes_the_server() {
     assert_stock_1_4_0("mosh-server");
     let (bootstrap, mut server) = start_stock_server("60580:60599");

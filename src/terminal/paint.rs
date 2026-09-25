@@ -115,6 +115,53 @@ mod tests {
     }
 
     #[test]
+    fn server_spacing_character_survives_split_differences_followup_and_resize() {
+        let initial = TerminalState::new(80, 24).unwrap();
+        let line_start = apply(&initial, "\u{0605}".as_bytes());
+        assert_eq!(line_start.screen().cursor_position(), (0, 1));
+        let after = apply(&line_start, b"-AFTER");
+        assert_eq!(after.screen().cell(0, 0).unwrap().contents(), "\u{0605}");
+        assert_eq!(after.screen().cell(0, 1).unwrap().contents(), "-");
+        assert_eq!(after.screen().cursor_position(), (0, 7));
+
+        let mut projection = vt100::Parser::new(24, 80, 0);
+        projection.process(&TerminalPainter::full(&initial).unwrap());
+        for (previous, current) in [(&initial, &line_start), (&line_start, &after)] {
+            projection.process(&TerminalPainter::incremental(previous, current).unwrap());
+            assert_eq!(
+                projection.screen().state_formatted(),
+                current.screen().state_formatted()
+            );
+        }
+
+        let continued = apply(&after, b"Z");
+        assert_eq!(continued.screen().contents(), "\u{0605}-AFTERZ");
+        assert_eq!(continued.screen().cursor_position(), (0, 8));
+        projection.process(&TerminalPainter::incremental(&after, &continued).unwrap());
+        assert_eq!(
+            projection.screen().state_formatted(),
+            continued.screen().state_formatted()
+        );
+
+        let resize = WireHostDifference {
+            operations: vec![WireHostOperation {
+                host_bytes: None,
+                size: Some(WireHostSize {
+                    columns: 81,
+                    rows: 25,
+                }),
+                echo_acknowledgement: None,
+            }],
+        }
+        .encode_to_vec();
+        let resized = continued
+            .apply(&TerminalDifference::decode(&resize).unwrap())
+            .unwrap();
+        assert_repaints(&resized, &TerminalPainter::full(&resized).unwrap());
+        assert_eq!(resized.screen().cell(0, 0).unwrap().contents(), "\u{0605}");
+    }
+
+    #[test]
     fn sparse_blank_rows_never_confuse_incremental_repaint() {
         let initial = TerminalState::new(40, 20).unwrap();
         let frames = [

@@ -1,7 +1,5 @@
 use core::fmt;
 
-use unicode_width::UnicodeWidthChar as _;
-
 use super::{TerminalDifference, TerminalError, TerminalOperation};
 use crate::limits::{
     MAX_TERMINAL_COLUMNS, MAX_TERMINAL_ROWS, MAX_TERMINAL_VISIBLE_CELLS,
@@ -176,7 +174,7 @@ impl vte::Perform for ScalarBudget {
     fn print(&mut self, character: char) {
         self.prints += 1;
         self.last_printed = Some(character);
-        let Some(width) = character.width() else {
+        let Some(width) = crate::terminal_width::width(character) else {
             self.error = Some(TerminalError::UnsupportedControl);
             return;
         };
@@ -422,6 +420,66 @@ mod tests {
     }
 
     #[test]
+    fn server_spacing_characters_occupy_cells_at_start_and_after_text() {
+        for (character, width) in [
+            ('\u{0605}', 1),
+            ('\u{070f}', 1),
+            ('\u{08e2}', 1),
+            ('\u{09be}', 1),
+            ('\u{17a4}', 1),
+            ('\u{17d8}', 1),
+            ('\u{302e}', 2),
+            ('\u{3248}', 2),
+        ] {
+            let text = format!("{character}-AFTER");
+            let state = TerminalState::new(80, 24)
+                .unwrap()
+                .apply(&difference(vec![host_bytes(text.as_bytes())]))
+                .unwrap();
+            assert_eq!(
+                state.screen.cell(0, 0).unwrap().contents(),
+                character.to_string()
+            );
+            assert_eq!(state.screen.cell(0, width).unwrap().contents(), "-");
+            assert_eq!(state.screen.cursor_position(), (0, width + 6));
+
+            let following = format!("X{character}-AFTER");
+            let state = TerminalState::new(80, 24)
+                .unwrap()
+                .apply(&difference(vec![host_bytes(following.as_bytes())]))
+                .unwrap();
+            assert_eq!(
+                state.screen.cell(0, 1).unwrap().contents(),
+                character.to_string()
+            );
+            assert_eq!(state.screen.cell(0, 1 + width).unwrap().contents(), "-");
+            assert_eq!(state.screen.cursor_position(), (0, width + 7));
+        }
+    }
+
+    #[test]
+    fn server_spacing_character_keeps_the_per_cell_scalar_limit() {
+        let initial = TerminalState::new(80, 24).unwrap();
+        let eight_scalars = format!("\u{0605}{}", "\u{301}".repeat(7));
+        let accepted = initial
+            .apply(&difference(vec![host_bytes(eight_scalars.as_bytes())]))
+            .unwrap();
+        assert_eq!(
+            accepted.screen.cell(0, 0).unwrap().contents(),
+            eight_scalars
+        );
+
+        let nine_scalars = format!("\u{0605}{}", "\u{301}".repeat(8));
+        assert_eq!(
+            initial
+                .apply(&difference(vec![host_bytes(nine_scalars.as_bytes())]))
+                .unwrap_err(),
+            TerminalError::TooManyScalarsInCell
+        );
+        assert!(!initial.screen.cell(0, 0).unwrap().has_contents());
+    }
+
+    #[test]
     fn preserves_printable_unicode_categories_without_special_cases() {
         let samples = [
             ("A", 1),         // ASCII
@@ -448,7 +506,7 @@ mod tests {
             assert_eq!(state.screen.cell(0, 1 + width).unwrap().contents(), "Y");
         }
 
-        for cluster in ["e\u{301}", "x\u{200d}", "x\u{fe0f}"] {
+        for cluster in ["e\u{301}", "x\u{200d}", "x\u{fe0f}", "x\u{2d7f}"] {
             let state = TerminalState::new(80, 24)
                 .unwrap()
                 .apply(&difference(vec![host_bytes(cluster.as_bytes())]))

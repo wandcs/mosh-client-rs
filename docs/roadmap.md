@@ -5,6 +5,30 @@ does not authorize work before its entry gate passes. Every item must follow
 [the project principles](project-principles.md); completing a checklist does not
 justify violating them.
 
+## Post-0.1.2 stock cell-width reliability repair
+
+LeanTTY [PR #263](https://github.com/wandcs/leantty/pull/263) reproduced a
+`Protocol` disconnect on stock-server output containing U+0605. The
+[cell-width fixture](fixtures/stock-1.4.0-cell-width.md) defines the
+bounded repair and compatibility profile.
+
+- [x] Reproduce the pre-fix U+0605 failure in local terminal tests.
+- [x] Use one cell-width policy for admission, screen storage, and cursor
+  movement; retain scalar and byte limits.
+- [x] Cover representative width disagreements at line start and after text,
+  split differences, follow-up input, resize, repaint, and U+FFFD regression.
+- [x] Verify the selected characters through the stock 1.4.0 public Session.
+- [x] Run a bounded binary-output sample, observe its result, and send a
+  follow-up command before any screen reset.
+- [x] Complete format, strict lint, all-target tests, and scoped documentation
+  review in default WSL.
+- [ ] Select `v0.1.3` and complete stable and Rust 1.88, stock-server,
+  dependency, fuzz, ARM64 OHOS, and clean source-package release gates.
+- [ ] Publish the verified `v0.1.3` tag and GitHub Release with the inspected
+  source package and checksum; read back public assets and a fresh Git-tag
+  consumer.
+- [ ] Update LeanTTY's dependency and run physical acceptance separately.
+
 ## Post-0.1.1 printable Unicode terminal reliability repair
 
 LeanTTY's 2026-09-25 diagnostic reproduced a library Session ending with
