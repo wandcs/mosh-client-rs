@@ -288,6 +288,12 @@ new snapshot only after validation succeeds. This preserves the
 synchronization plan/commit boundary and keeps parser internals out of retained
 state.
 
+The `vt100` 0.16.2 screen modules are compiled privately into this crate with
+the narrow U+FFFD correction described in the
+[source patch note](../src/vt100/PATCH.md). No screen type enters the public
+API. Keeping them in the same crate also makes the Git checkout and the Cargo
+source package compile the same terminal behavior.
+
 The painter derives full or incremental VT from two screen snapshots. Full
 paint resets the verified external focus and mouse-policy modes, then emits the
 complete visible screen and input modes. It never replays bells, titles,

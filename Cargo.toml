@@ -1,6 +1,6 @@
 [package]
 name = "mosh-client"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2024"
 rust-version = "1.88"
 license = "MIT OR Apache-2.0"
@@ -17,12 +17,12 @@ path = "src/lib.rs"
 [dependencies]
 aes = { version = "=0.9.1", features = ["zeroize"] }
 base64 = { version = "0.23.1", default-features = false }
+itoa = "=1.0.18"
 ocb3 = { version = "0.2.0", default-features = false }
 miniz_oxide = { version = "=0.9.1", default-features = false, features = ["with-alloc"] }
 prost = { version = "=0.14.4", default-features = false, features = ["derive", "std"] }
 tokio = { version = "1", default-features = false, features = ["net", "rt", "sync", "time"] }
-unicode-width = { version = "=0.2.2", default-features = false }
-vt100 = "=0.16.2"
+unicode-width = { version = "=0.2.2", default-features = false, features = ["cjk"] }
 vte = "=0.15.0"
 zeroize = { version = "1.9.0", default-features = false }
 

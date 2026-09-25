@@ -5,6 +5,28 @@ does not authorize work before its entry gate passes. Every item must follow
 [the project principles](project-principles.md); completing a checklist does not
 justify violating them.
 
+## Post-0.1.1 printable Unicode terminal reliability repair
+
+LeanTTY's 2026-09-25 diagnostic reproduced a library Session ending with
+`Protocol` when the stock server sends a valid U+FFFD replacement character.
+The [sanitized stock fixture](fixtures/stock-1.4.0-replacement-character.md)
+defines the repair and checks representative printable Unicode beyond U+FFFD.
+This is a reproduced library defect under the Phase 4 reopening rule, not a
+broader binary-output compatibility claim.
+
+- [x] Reproduce the failing terminal transition before changing the parser.
+- [x] Preserve valid U+FFFD in authoritative screen state, cursor movement,
+  incremental output, and full repaint without relaxing other validation.
+- [x] Verify valid U+FFFD and stock-server replacement of invalid bytes through
+  the public Session, along with selected Latin, CJK, emoji, and combining
+  text, followed by input, resize, and repaint.
+- [x] Pass formatting, strict Clippy, all-target tests, the source-package
+  rebuild, and the scoped source and license audit in default WSL.
+- [x] Select `v0.1.2` and verify the library candidate on stable and Rust 1.88,
+  against stock 1.4.0, as a source package, and for ARM64 OHOS.
+- [ ] Complete a GitHub Release with inspected package assets; update LeanTTY's
+  dependency and run physical acceptance separately.
+
 ## 0.1.1 release completed
 
 The maintainer authorized formal 0.1.1 publication through the existing GitHub

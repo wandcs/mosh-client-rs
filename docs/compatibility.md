@@ -31,6 +31,24 @@ The first stock-server terminal profile is `TERM=xterm-256color`,
 bounds in [limits](limits.md). Other locales, ambiguous-width policies, and
 terminal identities need their own fixture before the claim expands.
 
+Received terminal patches must be well-formed UTF-8 and complete VT sequences.
+In ground text, U+0020–U+007E and U+00A0–U+10FFFF take the printable path;
+well-formed UTF-8 cannot encode surrogate code points. The screen model retains
+scalars of width one or two, including ASCII, non-ASCII letters, CJK, emoji,
+private-use scalars, and U+FFFD. Zero-width scalars such as combining
+marks, joiners, and variation selectors are retained with a preceding base in
+the same host-byte operation, subject to the eight-scalar and cell-byte bounds.
+Supported terminal controls (such as newline and carriage return) are parsed
+as controls; unsupported C0/C1 controls and DEL (U+007F) fail explicitly. A
+Unicode scalar accepted into the screen is not a guarantee that every consumer
+font will draw a visible glyph or that complex grapheme shaping is identical.
+
+The [stock-server fixture](fixtures/stock-1.4.0-replacement-character.md)
+covers U+FFFD, selected Latin/CJK/emoji/combining text, and one invalid remote
+byte that the server converts to U+FFFD. The client still rejects malformed
+UTF-8 in a received terminal patch; this does not claim arbitrary binary-output
+compatibility.
+
 The first embedding oracle is LeanTTY's version-locked xterm.js surface. An
 independent permissively licensed terminal model provides a second local check.
 This baseline does not claim compatibility with every terminal emulator or
