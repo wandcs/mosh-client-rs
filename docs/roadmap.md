@@ -22,8 +22,8 @@ the repair and retained compatibility boundaries.
   submit follow-up input before any screen reset.
 - [x] Complete stable and Rust 1.88 checks, stock regression, dependency,
   fuzz, and ARM64 OHOS gates.
-- [ ] Inspect and rebuild the clean source package and run the publishing
-  dry run without uploading to a registry.
+- [x] Inspect and rebuild the clean source package, independently check it on
+  Rust 1.88, and run a publishing dry run without uploading to a registry.
 - [ ] Publish the verified `v0.1.4` GitHub tag and Release; record a fresh
   consumer readback. LeanTTY dependency update and physical acceptance remain
   separate consumer work.
