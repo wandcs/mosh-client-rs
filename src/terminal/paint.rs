@@ -162,6 +162,33 @@ mod tests {
     }
 
     #[test]
+    fn blink_hidden_and_reverse_video_survive_incremental_and_full_repaint() {
+        let initial = TerminalState::new(80, 24).unwrap();
+        let active = apply(&initial, b"\x1b[5mB\x1b[8mH\x1b[?5h");
+        let full = TerminalPainter::full(&active).unwrap();
+        assert!(full.windows(5).any(|bytes| bytes == b"\x1b[?5h"));
+        assert_repaints(&active, &full);
+
+        let mut projection = vt100::Parser::new(24, 80, 0);
+        projection.process(&TerminalPainter::full(&initial).unwrap());
+        projection.process(&TerminalPainter::incremental(&initial, &active).unwrap());
+        assert_eq!(
+            projection.screen().state_formatted(),
+            active.screen().state_formatted()
+        );
+
+        let reset = apply(&active, b"\x1b[25m\x1b[28m\x1b[?5lN");
+        let incremental = TerminalPainter::incremental(&active, &reset).unwrap();
+        assert!(incremental.windows(5).any(|bytes| bytes == b"\x1b[?5l"));
+        projection.process(&incremental);
+        assert_eq!(
+            projection.screen().state_formatted(),
+            reset.screen().state_formatted()
+        );
+        assert_repaints(&reset, &TerminalPainter::full(&reset).unwrap());
+    }
+
+    #[test]
     fn sparse_blank_rows_never_confuse_incremental_repaint() {
         let initial = TerminalState::new(40, 20).unwrap();
         let frames = [

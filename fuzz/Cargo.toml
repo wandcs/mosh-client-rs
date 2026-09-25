@@ -10,7 +10,7 @@ cargo-fuzz = true
 
 [dependencies]
 libfuzzer-sys = "=0.4.13"
-mosh-client = { path = "..", version = "=0.1.3" }
+mosh-client = { path = "..", version = "=0.1.4" }
 
 [workspace]
 members = ["."]

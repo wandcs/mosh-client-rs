@@ -420,6 +420,121 @@ mod tests {
     }
 
     #[test]
+    fn accepts_semicolons_in_stock_window_titles_without_a_system_effect() {
+        let initial = TerminalState::new(80, 24).unwrap();
+        for selector in [b'0', b'1', b'2'] {
+            let bytes = [b"\x1b]".as_slice(), &[selector], b";hello;world\x07X"].concat();
+            let next = initial
+                .apply(&difference(vec![host_bytes(&bytes)]))
+                .unwrap();
+            assert_eq!(next.screen.contents(), "X");
+            assert_eq!(next.screen.cursor_position(), (0, 1));
+            assert!(
+                !next
+                    .screen
+                    .state_formatted()
+                    .windows(2)
+                    .any(|s| s == b"\x1b]")
+            );
+        }
+        assert_eq!(
+            initial
+                .apply(&difference(vec![host_bytes(b"\x1b]52;c;%%%\x07")]))
+                .unwrap_err(),
+            TerminalError::UnsupportedOsc
+        );
+    }
+
+    #[test]
+    fn title_callbacks_receive_the_complete_semicolon_separated_text() {
+        #[derive(Default)]
+        struct Titles {
+            icon: Vec<u8>,
+            title: Vec<u8>,
+        }
+
+        impl vt100::Callbacks for Titles {
+            fn set_window_icon_name(&mut self, _: &mut vt100::Screen, icon: &[u8]) {
+                self.icon = icon.to_vec();
+            }
+
+            fn set_window_title(&mut self, _: &mut vt100::Screen, title: &[u8]) {
+                self.title = title.to_vec();
+            }
+        }
+
+        let mut parser = vt100::Parser::new_with_callbacks(24, 80, 0, Titles::default());
+        parser.process(b"\x1b]0;hello;world\x07");
+        assert_eq!(parser.callbacks().icon, b"hello;world");
+        assert_eq!(parser.callbacks().title, b"hello;world");
+        parser.process("\x1b]1;中;文\x07".as_bytes());
+        assert_eq!(parser.callbacks().icon, "中;文".as_bytes());
+        parser.process(b"\x1b]2;one;two;three\x07");
+        assert_eq!(parser.callbacks().title, b"one;two;three");
+    }
+
+    #[test]
+    fn stock_blink_hidden_and_reverse_video_are_represented_in_screen_state() {
+        let initial = TerminalState::new(80, 24).unwrap();
+        let active = initial
+            .apply(&difference(vec![host_bytes(b"\x1b[5mX\x1b[8mY\x1b[?5h")]))
+            .unwrap();
+        let formatted = active.screen.state_formatted();
+        assert!(formatted.windows(4).any(|s| s == b"[5mX"));
+        assert!(formatted.windows(4).any(|s| s == b"[8mY"));
+        assert!(formatted.windows(3).any(|s| s == b"?5h"));
+        assert!(active.screen.reverse_video());
+        let blink = active.screen.cell(0, 0).unwrap();
+        assert!(blink.blink());
+        assert!(!blink.hidden());
+        let hidden = active.screen.cell(0, 1).unwrap();
+        assert!(hidden.blink());
+        assert!(hidden.hidden());
+        assert!(!hidden.inverse());
+
+        let reset = active
+            .apply(&difference(vec![host_bytes(b"\x1b[25m\x1b[28m\x1b[?5lZ")]))
+            .unwrap();
+        assert_eq!(reset.screen.contents(), "XYZ");
+        assert!(!reset.screen.reverse_video());
+        assert!(!reset.screen.cell(0, 2).unwrap().blink());
+        assert!(!reset.screen.cell(0, 2).unwrap().hidden());
+        let diff = reset.screen.state_diff(&active.screen);
+        assert!(diff.windows(3).any(|s| s == b"?5l"));
+    }
+
+    #[test]
+    fn excluded_modes_clipboard_payload_and_cell_limits_still_fail() {
+        let initial = TerminalState::new(80, 24).unwrap();
+        for bytes in [b"\x1b[?1001h".as_slice(), b"\x1b[?1015h"] {
+            assert!(matches!(
+                initial.apply(&difference(vec![host_bytes(bytes)])),
+                Err(TerminalError::UnsupportedCsi { .. })
+            ));
+        }
+        assert_eq!(
+            initial
+                .apply(&difference(vec![host_bytes(b"\x1b]52;c;%%%\x07")]))
+                .unwrap_err(),
+            TerminalError::UnsupportedOsc
+        );
+        let too_many_scalars = format!("A{}", "\u{301}".repeat(8));
+        assert_eq!(
+            initial
+                .apply(&difference(vec![host_bytes(too_many_scalars.as_bytes())]))
+                .unwrap_err(),
+            TerminalError::TooManyScalarsInCell
+        );
+        let too_many_bytes = format!("A{}", "\u{1ab0}".repeat(7));
+        assert_eq!(
+            initial
+                .apply(&difference(vec![host_bytes(too_many_bytes.as_bytes())]))
+                .unwrap_err(),
+            TerminalError::CellEncodingTooLarge
+        );
+    }
+
+    #[test]
     fn server_spacing_characters_occupy_cells_at_start_and_after_text() {
         for (character, width) in [
             ('\u{0605}', 1),
