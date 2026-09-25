@@ -24,10 +24,12 @@ the repair and retained compatibility boundaries.
   fuzz, and ARM64 OHOS gates.
 - [x] Inspect and rebuild the clean source package, independently check it on
   Rust 1.88, and run a publishing dry run without uploading to a registry.
-- [ ] Publish the verified `v0.1.4` GitHub tag and Release; record a fresh
+- [x] Publish the verified `v0.1.4` GitHub tag and Release; record a fresh
   consumer readback. LeanTTY dependency update and physical acceptance remain
   separate consumer work.
 
+The [0.1.4 release review](releases/0.1.4.md) records the tagged merge,
+source-package digest, public asset readback, and fresh Rust 1.88 consumer.
 
 ## Post-0.1.2 stock cell-width reliability repair
 
