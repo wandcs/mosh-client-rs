@@ -22,12 +22,17 @@ bounded repair and compatibility profile.
   follow-up command before any screen reset.
 - [x] Complete format, strict lint, all-target tests, and scoped documentation
   review in default WSL.
-- [ ] Select `v0.1.3` and complete stable and Rust 1.88, stock-server,
+- [x] Select `v0.1.3` and complete stable and Rust 1.88, stock-server,
   dependency, fuzz, ARM64 OHOS, and clean source-package release gates.
-- [ ] Publish the verified `v0.1.3` tag and GitHub Release with the inspected
+- [x] Publish the verified `v0.1.3` tag and GitHub Release with the inspected
   source package and checksum; read back public assets and a fresh Git-tag
   consumer.
 - [ ] Update LeanTTY's dependency and run physical acceptance separately.
+
+The [0.1.3 release review](releases/0.1.3.md) records the tagged merge
+commit, source-package digest, public asset readback, and fresh Rust 1.88
+consumer. The GitHub Release is the established distribution channel;
+no crates.io upload was made.
 
 ## Post-0.1.1 printable Unicode terminal reliability repair
 
