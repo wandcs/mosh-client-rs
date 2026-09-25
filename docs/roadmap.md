@@ -24,8 +24,12 @@ broader binary-output compatibility claim.
   rebuild, and the scoped source and license audit in default WSL.
 - [x] Select `v0.1.2` and verify the library candidate on stable and Rust 1.88,
   against stock 1.4.0, as a source package, and for ARM64 OHOS.
-- [ ] Complete a GitHub Release with inspected package assets; update LeanTTY's
-  dependency and run physical acceptance separately.
+- [x] Publish the `v0.1.2` GitHub Release with the inspected source package and
+  checksum; verify public assets and a fresh Rust 1.88 Git-tag consumer.
+- [ ] Update LeanTTY's dependency and run physical acceptance separately.
+
+The [0.1.2 release review](releases/0.1.2.md) records the public Tag, package
+digest, stock interoperability, and remaining consumer acceptance boundary.
 
 ## 0.1.1 release completed
 

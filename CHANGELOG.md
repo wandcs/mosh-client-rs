@@ -11,6 +11,9 @@
 - Verify selected Latin, CJK, emoji, combining, and replacement text through
   the public Session against stock `mosh-server` 1.4.0.
 
+See [the 0.1.2 release review](docs/releases/0.1.2.md) for verification and
+publication status.
+
 ## 0.1.1
 
 - Preserve an established Session when HarmonyOS temporarily reports
