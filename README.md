@@ -4,11 +4,11 @@ An independent, unofficial, wire-compatible Mosh client implementation in Rust.
 
 ## Status
 
-The current GitHub Release, [0.1.3](https://github.com/wandcs/mosh-client-rs/releases/tag/v0.1.3),
+The current GitHub Release, [0.1.4](https://github.com/wandcs/mosh-client-rs/releases/tag/v0.1.4),
 is available on GitHub. The Cargo package is named `mosh-client`
 and requires Rust 1.88 or newer. Its initial scope is stock `mosh-server`
 1.4.0, IPv4, one fixed UDP server endpoint, and the UTF-8 `xterm-256color`
-profile. See the [0.1.3 release review](docs/releases/0.1.3.md) for verification
+profile. See the [0.1.4 release review](docs/releases/0.1.4.md) for verification
 and publication status and the [changelog](CHANGELOG.md) for the release scope.
 
 Use the release tag as a Git dependency; this version has not been uploaded to
@@ -16,7 +16,7 @@ crates.io:
 
 ```toml
 [dependencies]
-mosh-client = { git = "https://github.com/wandcs/mosh-client-rs", tag = "v0.1.3", version = "=0.1.3" }
+mosh-client = { git = "https://github.com/wandcs/mosh-client-rs", tag = "v0.1.4", version = "=0.1.4" }
 ```
 
 Phase 1's bounded authenticated UDP core and Phase 2 are complete. Phase 3 now

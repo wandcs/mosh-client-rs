@@ -57,6 +57,18 @@ scalar still requires a preceding base within the same host-byte operation
 and remains subject to the cell limits. The fixture covers selected
 differences; other locales and server libc versions require new evidence.
 
+The [terminal-control batch fixture](fixtures/stock-1.4.0-terminal-compatibility-batch.md)
+covers OSC 0/1/2 titles containing semicolons, SGR blink/hidden attributes and
+their resets, and DEC whole-screen reverse video and its reset. Titles are
+parsed without exposing an application-level title effect. Blink and hidden
+remain distinct cell attributes in full and incremental paint; reverse video
+remains a screen mode. Mouse modes 1001/1015, malformed OSC 52 payloads,
+more than eight scalars in one cell, and cells over the encoded-byte limit
+retain their existing hard-failure policy. The raw ST terminator and split
+zero-width input boundaries require separate evidence. Actual blinking and
+screen inversion depend on the consumer terminal's VT support; the library
+does not promise those visual effects on xterm.js.
+
 The first embedding oracle is LeanTTY's version-locked xterm.js surface. An
 independent permissively licensed terminal model provides a second local check.
 This baseline does not claim compatibility with every terminal emulator or

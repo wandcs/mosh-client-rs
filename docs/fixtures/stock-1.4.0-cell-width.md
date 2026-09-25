@@ -35,9 +35,9 @@ not a claim that every Mosh server, locale, or terminal font has the same
 width table.
 
 The stock fixture and local regressions passed on 2026-09-25. A separate
-ignored stock fixture runs `cat /bin/ls`, waits for a marker emitted after
-that command, sends another input command, and verifies the Session is
-still active. It never clears the screen between binary output and the
-follow-up. This is one bounded binary sample, not a claim of arbitrary
-binary-output compatibility or physical HarmonyOS acceptance of the
-repaired revision.
+ignored stock fixture now sends the exact `\\cat /bin/ls` input on a 147×43
+Session, observes a terminal update, sends another input command separately,
+and verifies the Session is still active. It never clears the screen between
+binary output and the follow-up. This is one bounded binary sample, not a
+claim of arbitrary binary-output compatibility or physical HarmonyOS
+acceptance of the repaired revision.

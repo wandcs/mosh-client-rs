@@ -641,6 +641,30 @@ Author:
 - Limits: retains the scoped consumer result and cleanup status, not raw
   addresses, SSIDs, secrets, packets, or a formal LeanTTY release verdict.
 
+### Stock terminal-control batch compatibility
+
+- Date: 2026-09-26.
+- Behavior: stock `mosh-server` 1.4.0 sends OSC 0/1/2 title text containing
+  semicolons, SGR blink/hidden, and DEC whole-screen reverse video during
+  ordinary shell output. The client must retain these controls in the
+  authoritative screen and synthesized paint so a subsequent command remains
+  usable. Stock output normalizes an OSC ST terminator to BEL in the selected
+  case. Raw ST handling remains a separate input boundary.
+- Evidence class: LeanTTY's recorded physical diagnosis as a lead, independent
+  local raw-input scans, and project-controlled black-box stock-server public
+  Session fixtures.
+- Source: [batch fixture](fixtures/stock-1.4.0-terminal-compatibility-batch.md)
+  and [LeanTTY PR #264](https://github.com/wandcs/leantty/pull/264).
+- Observed versions: `mosh-client` 0.1.3 baseline, stock `mosh-server` 1.4.0,
+  `TERM=xterm-256color`, `LANG=C.UTF-8`, and the default WSL distribution.
+- Implementation consequence: rejoin OSC 0/1/2 title segments without
+  changing OSC 52 validation; store blink and hidden as cell attributes and
+  reverse video as a screen mode, and emit both in full and incremental paint.
+- Limits: mouse 1001/1015, malformed OSC 52, more than eight scalars per cell,
+  and overlarge encoded cells retain hard failure. The fixture verifies one
+  server version and locale, not arbitrary binary output or physical
+  HarmonyOS acceptance.
+
 ### Stock cell-width compatibility profile
 
 - Date: 2026-09-25.

@@ -5,6 +5,7 @@ const MODE_APPLICATION_CURSOR: u8 = 0b0000_0010;
 const MODE_HIDE_CURSOR: u8 = 0b0000_0100;
 const MODE_ALTERNATE_SCREEN: u8 = 0b0000_1000;
 const MODE_BRACKETED_PASTE: u8 = 0b0001_0000;
+const MODE_REVERSE_VIDEO: u8 = 0b0010_0000;
 
 /// The xterm mouse handling mode currently in use.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Default)]
@@ -252,6 +253,7 @@ impl Screen {
     }
 
     fn write_contents_formatted(&self, contents: &mut Vec<u8>) {
+        crate::term::ReverseVideo::new(self.reverse_video()).write_buf(contents);
         crate::term::HideCursor::new(self.hide_cursor()).write_buf(contents);
         let prev_attrs = self.grid().write_contents_formatted(contents);
         self.attrs.write_escape_code_diff(contents, &prev_attrs);
@@ -314,6 +316,10 @@ impl Screen {
     }
 
     fn write_contents_diff(&self, contents: &mut Vec<u8>, prev: &Self) {
+        if self.reverse_video() != prev.reverse_video() {
+            crate::term::ReverseVideo::new(self.reverse_video())
+                .write_buf(contents);
+        }
         if self.hide_cursor() != prev.hide_cursor() {
             crate::term::HideCursor::new(self.hide_cursor())
                 .write_buf(contents);
@@ -564,6 +570,12 @@ impl Screen {
     #[must_use]
     pub fn hide_cursor(&self) -> bool {
         self.mode(MODE_HIDE_CURSOR)
+    }
+
+    /// Returns whether the whole screen is in reverse-video mode.
+    #[must_use]
+    pub fn reverse_video(&self) -> bool {
+        self.mode(MODE_REVERSE_VIDEO)
     }
 
     /// Returns whether the terminal should be in bracketed paste mode.
@@ -1143,6 +1155,7 @@ impl Screen {
         for param in params {
             match param {
                 [1] => self.set_mode(MODE_APPLICATION_CURSOR),
+                [5] => self.set_mode(MODE_REVERSE_VIDEO),
                 [6] => self.grid_mut().set_origin_mode(true),
                 [9] => self.set_mouse_mode(MouseProtocolMode::Press),
                 [25] => self.clear_mode(MODE_HIDE_CURSOR),
@@ -1180,6 +1193,7 @@ impl Screen {
         for param in params {
             match param {
                 [1] => self.clear_mode(MODE_APPLICATION_CURSOR),
+                [5] => self.clear_mode(MODE_REVERSE_VIDEO),
                 [6] => self.grid_mut().set_origin_mode(false),
                 [9] => self.clear_mouse_mode(MouseProtocolMode::Press),
                 [25] => self.set_mode(MODE_HIDE_CURSOR),
@@ -1263,11 +1277,15 @@ impl Screen {
                 [2] => self.attrs.set_dim(),
                 [3] => self.attrs.set_italic(true),
                 [4] => self.attrs.set_underline(true),
+                [5] => self.attrs.set_blink(true),
                 [7] => self.attrs.set_inverse(true),
+                [8] => self.attrs.set_hidden(true),
                 [22] => self.attrs.set_normal_intensity(),
                 [23] => self.attrs.set_italic(false),
                 [24] => self.attrs.set_underline(false),
+                [25] => self.attrs.set_blink(false),
                 [27] => self.attrs.set_inverse(false),
+                [28] => self.attrs.set_hidden(false),
                 [n] if (30..=37).contains(n) => {
                     self.attrs.fgcolor = crate::Color::Idx(to_u8!(*n) - 30);
                 }

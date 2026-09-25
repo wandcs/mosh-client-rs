@@ -5,6 +5,30 @@ does not authorize work before its entry gate passes. Every item must follow
 [the project principles](project-principles.md); completing a checklist does not
 justify violating them.
 
+## Post-0.1.3 terminal-control reliability repair
+
+LeanTTY [PR #264](https://github.com/wandcs/leantty/pull/264) records a
+versioned 19-case stock-server matrix and 277 raw-input scans. The
+[batch fixture](fixtures/stock-1.4.0-terminal-compatibility-batch.md) defines
+the repair and retained compatibility boundaries.
+
+- [x] Reproduce the original seven-class failures on 0.1.3.
+- [x] Preserve OSC 0/1/2 title text with semicolons, SGR 5/8 and 25/28 state,
+  and DEC ?5h/?5l whole-screen mode across state and paint.
+- [x] Retain mouse-mode, malformed OSC 52, and cell-capacity rejection.
+- [x] Run the 19-case and 277-input batch scans, plus the 19-case stock 1.4.0
+  public Session fixture with follow-up input for accepted cases.
+- [x] Send the exact `\\cat /bin/ls` input in a public Session and separately
+  submit follow-up input before any screen reset.
+- [x] Complete stable and Rust 1.88 checks, stock regression, dependency,
+  fuzz, and ARM64 OHOS gates.
+- [x] Inspect and rebuild the clean source package, independently check it on
+  Rust 1.88, and run a publishing dry run without uploading to a registry.
+- [ ] Publish the verified `v0.1.4` GitHub tag and Release; record a fresh
+  consumer readback. LeanTTY dependency update and physical acceptance remain
+  separate consumer work.
+
+
 ## Post-0.1.2 stock cell-width reliability repair
 
 LeanTTY [PR #263](https://github.com/wandcs/leantty/pull/263) reproduced a

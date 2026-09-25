@@ -1,5 +1,6 @@
 use super::super::*;
 
+use std::fmt::Write as _;
 use std::net::Ipv4Addr;
 use std::process::{Command, Stdio};
 use std::time::Duration;
@@ -253,18 +254,23 @@ fn stock_1_4_0_public_session_observes_binary_output_before_followup() {
     let (bootstrap, mut server) = start_stock_server("60720:60739");
 
     stock_runtime().block_on(async {
-        let (mut session, session_task) = Session::connect(bootstrap, 80, 24)
+        let (mut session, session_task) = Session::connect(bootstrap, 147, 43)
             .await
             .expect("public Session setup failed");
         let task = tokio::spawn(session_task.run());
-        let mut projection = vt100::Parser::new(24, 80, 0);
+        let mut projection = vt100::Parser::new(43, 147, 0);
 
         wait_for_public_screen(&mut session, &mut projection, "MOSH_SESSION> ").await;
         session
-            .send_input(b"cat /bin/ls; printf '\\nBINARY_%s_END\\n' OUTPUT\n".to_vec())
+            .send_input(b"\\cat /bin/ls\n".to_vec())
             .await
             .expect("binary command queue closed");
-        wait_for_public_screen(&mut session, &mut projection, "BINARY_OUTPUT_END").await;
+        let observed = tokio::time::timeout(Duration::from_secs(5), session.next_output())
+            .await
+            .expect("binary command produced no terminal update")
+            .expect("public Session closed during binary command");
+        projection.process(&observed);
+        tokio::time::sleep(Duration::from_millis(500)).await;
         assert_eq!(session.state(), SessionState::Active);
 
         // Observe the binary output and issue more input before any screen reset.
@@ -285,6 +291,121 @@ fn stock_1_4_0_public_session_observes_binary_output_before_followup() {
     });
 
     assert!(server.terminate(), "stock server fixture did not clean up");
+}
+
+// These are the independent stock-server cases from LeanTTY PR #264.
+const STOCK_TERMINAL_BATCH_CASES: [(&str, &str, bool); 19] = [
+    (
+        "osc0_semicolon_bel",
+        "1b5d303b68656c6c6f3b776f726c6407",
+        true,
+    ),
+    (
+        "osc0_semicolon_st",
+        "1b5d303b68656c6c6f3b776f726c641b5c",
+        true,
+    ),
+    (
+        "osc1_semicolon_bel",
+        "1b5d313b68656c6c6f3b776f726c6407",
+        true,
+    ),
+    (
+        "osc2_semicolon_bel",
+        "1b5d323b68656c6c6f3b776f726c6407",
+        true,
+    ),
+    ("osc0_plain_bel", "1b5d303b68656c6c6f07", true),
+    ("sgr_5", "1b5b356d58", true),
+    ("sgr_8", "1b5b386d58", true),
+    ("sgr_1", "1b5b316d58", true),
+    ("mode_5", "1b5b3f3568", true),
+    ("mode5_reset", "1b5b3f356c", true),
+    ("mode_1001", "1b5b3f3130303168", false),
+    ("mode_1015", "1b5b3f3130313568", false),
+    ("mode_1000", "1b5b3f3130303068", true),
+    ("osc52_bad", "1b5d35323b633b25252507", false),
+    ("osc52", "1b5d35323b633b59574a6a07", true),
+    ("combining2_8", "41cc81cc81cc81cc81cc81cc81cc81cc81", false),
+    ("combining2_7", "41cc81cc81cc81cc81cc81cc81cc81", true),
+    (
+        "combining3_7",
+        "41e1aab0e1aab0e1aab0e1aab0e1aab0e1aab0e1aab0",
+        false,
+    ),
+    (
+        "combining3_6",
+        "41e1aab0e1aab0e1aab0e1aab0e1aab0e1aab0",
+        true,
+    ),
+];
+
+#[test]
+#[ignore = "requires a locally installed stock mosh-server 1.4.0"]
+fn stock_1_4_0_public_session_batch_terminal_compatibility() {
+    assert_stock_1_4_0("mosh-server");
+    // Each server starts fresh so a prior policy rejection cannot affect the next case.
+
+    for (index, (id, hex, should_survive)) in STOCK_TERMINAL_BATCH_CASES.into_iter().enumerate() {
+        let first_port = 60740 + 20 * index;
+        let range = format!("{first_port}:{}", first_port + 19);
+        let (bootstrap, mut server) = start_stock_server(&range);
+        stock_runtime().block_on(async {
+            let (mut session, session_task) = Session::connect(bootstrap, 147, 43)
+                .await
+                .unwrap_or_else(|error| panic!("{id}: public Session setup failed: {error:?}"));
+            let task = tokio::spawn(session_task.run());
+            let mut projection = vt100::Parser::new(43, 147, 0);
+            wait_for_public_screen(&mut session, &mut projection, "MOSH_SESSION> ").await;
+
+            let bytes: Vec<u8> = hex
+                .as_bytes()
+                .chunks_exact(2)
+                .map(|pair| u8::from_str_radix(std::str::from_utf8(pair).unwrap(), 16).unwrap())
+                .collect();
+            let mut octal = String::new();
+            for byte in bytes {
+                write!(octal, "\\{byte:03o}").unwrap();
+            }
+            let command = format!("printf '{octal}'; printf '\\nBATCH_%s_OK\\n' {id}\n");
+            session
+                .send_input(command.into_bytes())
+                .await
+                .unwrap_or_else(|error| panic!("{id}: input queue closed: {error:?}"));
+
+            if should_survive {
+                wait_for_public_screen(&mut session, &mut projection, &format!("BATCH_{id}_OK"))
+                    .await;
+                assert_eq!(session.state(), SessionState::Active, "{id}");
+                session
+                    .send_input(format!("printf 'AFTER_%s_OK\\n' {id}\n").into_bytes())
+                    .await
+                    .unwrap_or_else(|error| panic!("{id}: follow-up queue closed: {error:?}"));
+                wait_for_public_screen(&mut session, &mut projection, &format!("AFTER_{id}_OK"))
+                    .await;
+                session.cancel();
+                let exit = tokio::time::timeout(Duration::from_secs(2), task)
+                    .await
+                    .unwrap_or_else(|_| panic!("{id}: cancelled Session did not stop"))
+                    .unwrap()
+                    .unwrap_or_else(|error| panic!("{id}: Session failed: {error:?}"));
+                assert_eq!(exit, SessionExit::Cancelled, "{id}");
+            } else {
+                let result = tokio::time::timeout(Duration::from_secs(5), task)
+                    .await
+                    .unwrap_or_else(|_| panic!("{id}: rejected policy did not stop Session"))
+                    .unwrap();
+                assert!(
+                    matches!(result, Err(SessionError::Protocol)),
+                    "{id}: {result:?}"
+                );
+            }
+        });
+        assert!(
+            server.terminate(),
+            "{id}: stock server fixture did not clean up"
+        );
+    }
 }
 
 #[test]

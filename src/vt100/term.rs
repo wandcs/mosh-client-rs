@@ -120,6 +120,8 @@ pub struct Attrs {
     italic: Option<bool>,
     underline: Option<bool>,
     inverse: Option<bool>,
+    blink: Option<bool>,
+    hidden: Option<bool>,
 }
 
 impl Attrs {
@@ -152,19 +154,34 @@ impl Attrs {
         self.inverse = Some(inverse);
         self
     }
+
+    pub fn blink(mut self, blink: bool) -> Self {
+        self.blink = Some(blink);
+        self
+    }
+
+    pub fn hidden(mut self, hidden: bool) -> Self {
+        self.hidden = Some(hidden);
+        self
+    }
+
+    fn is_empty(&self) -> bool {
+        self.fgcolor.is_none()
+            && self.bgcolor.is_none()
+            && self.intensity.is_none()
+            && self.italic.is_none()
+            && self.underline.is_none()
+            && self.inverse.is_none()
+            && self.blink.is_none()
+            && self.hidden.is_none()
+    }
 }
 
 impl BufWrite for Attrs {
     #[allow(unused_assignments)]
     #[allow(clippy::branches_sharing_code)]
     fn write_buf(&self, buf: &mut Vec<u8>) {
-        if self.fgcolor.is_none()
-            && self.bgcolor.is_none()
-            && self.intensity.is_none()
-            && self.italic.is_none()
-            && self.underline.is_none()
-            && self.inverse.is_none()
-        {
+        if self.is_empty() {
             return;
         }
 
@@ -266,6 +283,14 @@ impl BufWrite for Attrs {
             }
         }
 
+        if let Some(blink) = self.blink {
+            write_param!(if blink { 5 } else { 25 });
+        }
+
+        if let Some(hidden) = self.hidden {
+            write_param!(if hidden { 8 } else { 28 });
+        }
+
         buf.push(b'm');
     }
 }
@@ -352,6 +377,28 @@ impl BufWrite for HideCursor {
             buf.extend_from_slice(b"\x1b[?25l");
         } else {
             buf.extend_from_slice(b"\x1b[?25h");
+        }
+    }
+}
+
+#[derive(Default, Debug)]
+#[must_use = "this struct does nothing unless you call write_buf"]
+pub struct ReverseVideo {
+    state: bool,
+}
+
+impl ReverseVideo {
+    pub fn new(state: bool) -> Self {
+        Self { state }
+    }
+}
+
+impl BufWrite for ReverseVideo {
+    fn write_buf(&self, buf: &mut Vec<u8>) {
+        if self.state {
+            buf.extend_from_slice(b"\x1b[?5h");
+        } else {
+            buf.extend_from_slice(b"\x1b[?5l");
         }
     }
 }

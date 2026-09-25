@@ -20,6 +20,8 @@ const TEXT_MODE_DIM: u8 = 0b0000_0010;
 const TEXT_MODE_ITALIC: u8 = 0b0000_0100;
 const TEXT_MODE_UNDERLINE: u8 = 0b0000_1000;
 const TEXT_MODE_INVERSE: u8 = 0b0001_0000;
+const TEXT_MODE_BLINK: u8 = 0b0010_0000;
+const TEXT_MODE_HIDDEN: u8 = 0b0100_0000;
 
 #[derive(Default, Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Attrs {
@@ -83,11 +85,35 @@ impl Attrs {
         self.mode & TEXT_MODE_INVERSE != 0
     }
 
+    pub fn blink(&self) -> bool {
+        self.mode & TEXT_MODE_BLINK != 0
+    }
+
+    pub fn hidden(&self) -> bool {
+        self.mode & TEXT_MODE_HIDDEN != 0
+    }
+
     pub fn set_inverse(&mut self, inverse: bool) {
         if inverse {
             self.mode |= TEXT_MODE_INVERSE;
         } else {
             self.mode &= !TEXT_MODE_INVERSE;
+        }
+    }
+
+    pub fn set_blink(&mut self, blink: bool) {
+        if blink {
+            self.mode |= TEXT_MODE_BLINK;
+        } else {
+            self.mode &= !TEXT_MODE_BLINK;
+        }
+    }
+
+    pub fn set_hidden(&mut self, hidden: bool) {
+        if hidden {
+            self.mode |= TEXT_MODE_HIDDEN;
+        } else {
+            self.mode &= !TEXT_MODE_HIDDEN;
         }
     }
 
@@ -137,6 +163,16 @@ impl Attrs {
             attrs
         } else {
             attrs.inverse(self.inverse())
+        };
+        let attrs = if self.blink() == other.blink() {
+            attrs
+        } else {
+            attrs.blink(self.blink())
+        };
+        let attrs = if self.hidden() == other.hidden() {
+            attrs
+        } else {
+            attrs.hidden(self.hidden())
         };
 
         attrs.write_buf(contents);

@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+## 0.1.4
+
+- Accept OSC 0/1/2 titles containing semicolons without changing the
+  application title policy.
+- Retain SGR blink/hidden text attributes and DEC whole-screen reverse video
+  through authoritative state, incremental paint, and full repaint.
+- Keep mouse modes 1001/1015, malformed OSC 52, and cell scalar/byte limits
+  as explicit rejection boundaries. Raw ST and split zero-width input remain
+  separate compatibility work.
+- Verify the 19 stock-server cases, full 277-input replay, the exact
+  `\\cat /bin/ls` input, and separately sent follow-up input.
+
+See [the 0.1.4 release review](docs/releases/0.1.4.md) for verification and
+publication status.
+
 ## 0.1.3
 
 - Use one stock-server cell-width policy for terminal validation, stored cells,
