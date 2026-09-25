@@ -641,6 +641,30 @@ Author:
 - Limits: retains the scoped consumer result and cleanup status, not raw
   addresses, SSIDs, secrets, packets, or a formal LeanTTY release verdict.
 
+### Stock cell-width compatibility profile
+
+- Date: 2026-09-25.
+- Behavior: U+0605 is a spacing cell in the stock 1.4.0 C.UTF-8 session,
+  while `unicode-width` 0.2.2 reports zero. The stock public Session also
+  carries selected characters from the other finite-width disagreement
+  classes without disconnecting.
+- Evidence class: project-controlled black-box stock-server fixture,
+  local exhaustive width-table comparison, and sanitized LeanTTY physical
+  diagnosis.
+- Source: [cell-width fixture](fixtures/stock-1.4.0-cell-width.md) and
+  [LeanTTY PR #263](https://github.com/wandcs/leantty/pull/263).
+- Observed versions: stock `mosh-server` 1.4.0, Ubuntu glibc 2.43
+  `C.UTF-8`, `unicode-width` 0.2.2 with `cjk`, and local
+  `mosh-client` 0.1.2 development revision.
+- Implementation consequence: apply one explicit width policy in input
+  validation and private screen cells. Retain the eight-scalar and
+  22-byte cell bounds, malformed UTF-8 rejection, and unsupported-control
+  rejection. Avoid runtime libc coupling to the consumer platform.
+- Limits: 95 finite-width mismatches were observed locally; stock
+  interoperability verifies representative samples, not every scalar
+  in every locale or server libc. Unassigned code points were excluded.
+  Physical acceptance of this revision remains with LeanTTY.
+
 ### Stock replacement-character terminal update
 
 - Date: 2026-09-25.

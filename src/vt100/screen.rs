@@ -1,5 +1,4 @@
 use crate::term::BufWrite as _;
-use unicode_width::UnicodeWidthChar as _;
 
 const MODE_APPLICATION_KEYPAD: u8 = 0b0000_0001;
 const MODE_APPLICATION_CURSOR: u8 = 0b0000_0010;
@@ -707,7 +706,7 @@ impl Screen {
         let size = self.grid().size();
         let attrs = self.attrs;
 
-        let width = c.width();
+        let width = crate::terminal_width::width(c);
         if width.is_none() && (u32::from(c)) < 256 {
             // don't even try to draw control characters
             return;

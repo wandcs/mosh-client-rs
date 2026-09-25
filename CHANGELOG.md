@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+## 0.1.3
+
+- Use one stock-server cell-width policy for terminal validation, stored cells,
+  cursor placement, and VT paint. This fixes the U+0605 protocol disconnect
+  and other finite-width differences in the verified `C.UTF-8` profile.
+- Keep malformed UTF-8, unsupported control, scalar-count, and cell-byte
+  limits explicit. The public Session API and production dependencies are
+  unchanged.
+- Verify representative width differences, U+FFFD, subsequent input, resize,
+  repaint, and a binary-output sample against stock `mosh-server` 1.4.0.
+
+See [the 0.1.3 release review](docs/releases/0.1.3.md) for verification and
+publication status.
+
 ## 0.1.2
 
 - Preserve valid U+FFFD and other printable Unicode from stock Mosh terminal

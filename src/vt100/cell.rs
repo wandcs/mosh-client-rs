@@ -1,5 +1,3 @@
-use unicode_width::UnicodeWidthChar as _;
-
 // chosen to make the size of the cell struct 32 bytes
 const CONTENT_BYTES: usize = 22;
 
@@ -48,7 +46,7 @@ impl Cell {
         // strings in this context should always be an arbitrary character
         // followed by zero or more zero-width characters, so we should only
         // have to look at the first character
-        self.set_wide(c.width().unwrap_or(1) > 1);
+        self.set_wide(crate::terminal_width::width(c).unwrap_or(1) > 1);
         self.attrs = a;
     }
 

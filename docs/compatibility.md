@@ -49,6 +49,14 @@ byte that the server converts to U+FFFD. The client still rejects malformed
 UTF-8 in a received terminal patch; this does not claim arbitrary binary-output
 compatibility.
 
+The [cell-width fixture](fixtures/stock-1.4.0-cell-width.md) covers a
+versioned `C.UTF-8` width profile where stock-server libc and the client's
+Unicode width data differ. Validation, authoritative cells, cursor movement,
+incremental paint, and full repaint use the same width policy. A width-zero
+scalar still requires a preceding base within the same host-byte operation
+and remains subject to the cell limits. The fixture covers selected
+differences; other locales and server libc versions require new evidence.
+
 The first embedding oracle is LeanTTY's version-locked xterm.js surface. An
 independent permissively licensed terminal model provides a second local check.
 This baseline does not claim compatibility with every terminal emulator or

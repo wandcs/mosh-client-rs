@@ -8,7 +8,7 @@
 #![deny(rustdoc::broken_intra_doc_links)]
 
 // The MIT-licensed vt100 0.16.2 screen implementation is kept private here so
-// the source package uses the same U+FFFD fix as a Git checkout.
+// the source package uses the same U+FFFD and cell-width fixes as a Git checkout.
 extern crate self as vt100;
 
 #[allow(dead_code)]
@@ -76,6 +76,7 @@ mod session;
 mod synchronization;
 #[allow(dead_code)]
 mod terminal;
+mod terminal_width;
 #[cfg(all(test, target_os = "linux"))]
 mod test_support;
 #[allow(dead_code)]
