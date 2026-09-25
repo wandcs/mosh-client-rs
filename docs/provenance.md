@@ -640,3 +640,24 @@ Author:
   and authenticated client-roaming contract; no code or wire rule changes.
 - Limits: retains the scoped consumer result and cleanup status, not raw
   addresses, SSIDs, secrets, packets, or a formal LeanTTY release verdict.
+
+### Stock replacement-character terminal update
+
+- Date: 2026-09-25.
+- Behavior: stock `mosh-server` 1.4.0 sends a visible U+FFFD both for an
+  explicit UTF-8 replacement character and after receiving one invalid remote
+  byte. It also carries selected Latin, CJK, emoji, and combining text through
+  the public Session. The client must retain these and remain usable.
+- Evidence class: project-controlled black-box stock-server fixture and
+  sanitized LeanTTY consumer diagnosis.
+- Source: [replacement-character fixture](fixtures/stock-1.4.0-replacement-character.md)
+  and LeanTTY's `mosh-replacement-character-diagnosis-20260925.md`.
+- Observed versions: stock `mosh-server` 1.4.0, `vt100` 0.16.2, and the local
+  `mosh-client` 0.1.1 development revision.
+- Implementation consequence: process valid printable Unicode through the same
+  authoritative screen and paint path, without a U+FFFD exception. Reject DEL
+  explicitly instead of accepting and silently dropping it after text. Do not
+  relax malformed UTF-8 or unsupported control handling.
+- Limits: the fixture covers selected outputs, later input, resize, and repaint.
+  It does not prove all arbitrary binary streams, every Unicode grapheme, or
+  physical HarmonyOS behavior.

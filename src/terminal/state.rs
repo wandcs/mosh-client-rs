@@ -176,7 +176,11 @@ impl vte::Perform for ScalarBudget {
     fn print(&mut self, character: char) {
         self.prints += 1;
         self.last_printed = Some(character);
-        if character.width().unwrap_or(0) == 0 {
+        let Some(width) = character.width() else {
+            self.error = Some(TerminalError::UnsupportedControl);
+            return;
+        };
+        if width == 0 {
             if self.scalars == 0 {
                 self.error = Some(TerminalError::TooManyScalarsInCell);
                 return;
@@ -397,6 +401,91 @@ mod tests {
                 .unwrap_err(),
             TerminalError::TooManyScalarsInCell
         );
+    }
+
+    #[test]
+    fn preserves_valid_replacement_character_and_cursor_position() {
+        let state = TerminalState::new(80, 24)
+            .unwrap()
+            .apply(&difference(vec![host_bytes(
+                "BEFORE-\u{fffd}-AFTER".as_bytes(),
+            )]))
+            .unwrap();
+
+        assert_eq!(state.screen.contents(), "BEFORE-\u{fffd}-AFTER");
+        assert_eq!(state.screen.cell(0, 7).unwrap().contents(), "\u{fffd}");
+        assert_eq!(state.screen.cursor_position(), (0, 14));
+
+        let continued = state.apply(&difference(vec![host_bytes(b"Z")])).unwrap();
+        assert_eq!(continued.screen.contents(), "BEFORE-\u{fffd}-AFTERZ");
+        assert_eq!(continued.screen.cursor_position(), (0, 15));
+    }
+
+    #[test]
+    fn preserves_printable_unicode_categories_without_special_cases() {
+        let samples = [
+            ("A", 1),         // ASCII
+            ("é", 1),         // precomposed Latin
+            ("Ω", 1),         // Greek
+            ("م", 1),         // Arabic
+            ("क", 1),         // Devanagari
+            ("中", 2),        // CJK
+            ("🙂", 2),        // supplementary-plane emoji
+            ("\u{10437}", 1), // supplementary-plane letter
+            ("\u{e000}", 1),  // private-use scalar
+            ("\u{fffd}", 1),  // replacement character
+            ("\u{a0}", 1),    // nonbreaking space
+        ];
+
+        for (sample, width) in samples {
+            let text = format!("X{sample}Y");
+            let state = TerminalState::new(80, 24)
+                .unwrap()
+                .apply(&difference(vec![host_bytes(text.as_bytes())]))
+                .unwrap();
+            assert_eq!(state.screen.cell(0, 1).unwrap().contents(), sample);
+            assert_eq!(state.screen.cursor_position(), (0, 2 + width));
+            assert_eq!(state.screen.cell(0, 1 + width).unwrap().contents(), "Y");
+        }
+
+        for cluster in ["e\u{301}", "x\u{200d}", "x\u{fe0f}"] {
+            let state = TerminalState::new(80, 24)
+                .unwrap()
+                .apply(&difference(vec![host_bytes(cluster.as_bytes())]))
+                .unwrap();
+            assert_eq!(state.screen.cell(0, 0).unwrap().contents(), cluster);
+            assert_eq!(state.screen.cursor_position(), (0, 1));
+        }
+    }
+
+    #[test]
+    fn rejects_del_control_even_after_printable_text() {
+        let stable = TerminalState::new(80, 24)
+            .unwrap()
+            .apply(&difference(vec![host_bytes(b"stable")]))
+            .unwrap();
+
+        for bytes in [b"\x7f".as_slice(), b"X\x7fY".as_slice()] {
+            assert_eq!(
+                stable
+                    .apply(&difference(vec![host_bytes(bytes)]))
+                    .unwrap_err(),
+                TerminalError::UnsupportedControl
+            );
+            assert_eq!(stable.screen.contents(), "stable");
+        }
+    }
+
+    #[test]
+    fn still_rejects_unhandled_c1_characters() {
+        let state = TerminalState::new(80, 24).unwrap();
+        assert_eq!(
+            state
+                .apply(&difference(vec![host_bytes("X\u{80}Y".as_bytes())]))
+                .unwrap_err(),
+            TerminalError::UnsupportedControl
+        );
+        assert_eq!(state.screen.contents(), "");
     }
 
     #[test]

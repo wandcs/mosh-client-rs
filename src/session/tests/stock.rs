@@ -66,6 +66,91 @@ fn stock_1_4_0_public_session_drives_an_interactive_shell() {
 
 #[test]
 #[ignore = "requires a locally installed stock mosh-server 1.4.0"]
+fn stock_1_4_0_public_session_preserves_printable_unicode() {
+    assert_stock_1_4_0("mosh-server");
+    let (bootstrap, mut server) = start_stock_server("60680:60699");
+
+    stock_runtime().block_on(async {
+        let (mut session, session_task) = Session::connect(bootstrap, 80, 24)
+            .await
+            .expect("public Session setup failed");
+        let task = tokio::spawn(session_task.run());
+        let mut projection = vt100::Parser::new(24, 80, 0);
+
+        wait_for_public_screen(&mut session, &mut projection, "MOSH_SESSION> ").await;
+        session
+            .send_input(b"printf 'BEFORE-\\357\\277\\275-AFTER\\n'\n".to_vec())
+            .await
+            .expect("Session command queue closed before valid UTF-8 output");
+        wait_for_public_screen(&mut session, &mut projection, "BEFORE-\u{fffd}-AFTER").await;
+
+        session
+            .send_input(b"printf 'INVALID-\\377-AFTER\\n'\n".to_vec())
+            .await
+            .expect("Session command queue closed before server replacement output");
+        wait_for_public_screen(&mut session, &mut projection, "INVALID-\u{fffd}-AFTER").await;
+
+        session
+            .send_input(
+                b"printf 'UNICODE-\\303\\251-\\344\\270\\255-\\360\\237\\231\\202-e\\314\\201-AFTER\\n'\n"
+                    .to_vec(),
+            )
+            .await
+            .expect("Session command queue closed before multilingual output");
+        wait_for_public_screen(&mut session, &mut projection, "UNICODE-é-中-🙂-e\u{301}-AFTER")
+            .await;
+
+        session
+            .send_input(b"printf 'CONTINUES_OK\\n'\n".to_vec())
+            .await
+            .expect("Session command queue closed before follow-up input");
+        wait_for_public_screen(&mut session, &mut projection, "CONTINUES_OK").await;
+
+        session.resize(81, 25).await.expect("resize was rejected");
+        session
+            .request_repaint()
+            .await
+            .expect("Session command queue closed before repaint");
+        let repaint = tokio::time::timeout(Duration::from_secs(2), session.next_output())
+            .await
+            .expect("full repaint was not delivered")
+            .expect("Session output queue closed before full repaint");
+        let mut replacement = vt100::Parser::new(25, 81, 0);
+        replacement.process(&repaint);
+        assert!(
+            replacement
+                .screen()
+                .contents()
+                .contains("BEFORE-\u{fffd}-AFTER")
+        );
+        assert!(
+            replacement
+                .screen()
+                .contents()
+                .contains("INVALID-\u{fffd}-AFTER")
+        );
+        assert!(replacement.screen().contents().contains("CONTINUES_OK"));
+        assert!(
+            replacement
+                .screen()
+                .contents()
+                .contains("UNICODE-é-中-🙂-e\u{301}-AFTER")
+        );
+
+        session.cancel();
+        let exit = tokio::time::timeout(Duration::from_secs(2), task)
+            .await
+            .expect("cancelled public stock Session did not stop")
+            .unwrap()
+            .expect("public stock Session failed");
+        assert_eq!(exit, SessionExit::Cancelled);
+    });
+
+    assert!(server.terminate(), "stock server fixture did not clean up");
+}
+
+#[test]
+#[ignore = "requires a locally installed stock mosh-server 1.4.0"]
 fn stock_1_4_0_public_session_gracefully_closes_the_server() {
     assert_stock_1_4_0("mosh-server");
     let (bootstrap, mut server) = start_stock_server("60580:60599");

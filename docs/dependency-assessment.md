@@ -30,9 +30,9 @@ apply only to their dated development baselines.
 | zlib | `miniz_oxide` 0.9.1 with only `with-alloc` | Adopted over `flate2`. A bounded streaming call exposes consumed input, allowing the decoder to enforce both the output cap and exactly one complete zlib stream. The crate has no native build. |
 | Secret clearing | `zeroize` 1.9.0 with default features disabled and without derive | Adopted for bootstrap. Wrap the raw 16-byte session key and any owned plaintext secret. Avoid the allocation and derive features and their extra surface. |
 | Bootstrap Base64 | `base64` 0.23.1 with default features disabled | Adopted. `decode_slice` needs neither `std` nor allocation. Strictly decode the 22-character unpadded standard alphabet into an existing 16-byte buffer. Disabling `simd-unsafe` keeps this dependency's path safe Rust. |
-| Terminal screen and VT paint | `vt100` 0.16.2 | Adopted for the private authoritative screen and deterministic full or incremental VT paint. The crate exposes no cells publicly. `HostBytes` patches are applied to cloned reference screens, so SSP can retain and evict terminal snapshots without cloning parser internals. |
-| VT validation | `vte` 0.15.0 with default `std` only | Adopted directly as well as through `vt100`. A separate bounded pass rejects invalid UTF-8, incomplete sequences, and cell content that `vt100` could otherwise truncate. Do not enable the broader ANSI helper feature. |
-| Unicode width | `unicode-width` 0.2.2 | Adopted. Project code uses ordinary `width`, not `width_cjk`. The direct dependency disables default features, but `vt100` enables `unicode-width` defaults transitively; the lockfile therefore contains the CJK table. |
+| Terminal screen and VT paint | Private MIT `vt100` 0.16.2 source | Adopted for the authoritative screen and deterministic full or incremental VT paint. The original dependency was embedded with one U+FFFD fix on 2026-09-25; see below. No cells enter the public API. |
+| VT validation | `vte` 0.15.0 with default `std` only | Adopted directly and used by the private screen source. A separate bounded pass rejects invalid UTF-8, incomplete sequences, and cell content that the screen could otherwise truncate. Do not enable the broader ANSI helper feature. |
+| Unicode width | `unicode-width` 0.2.2 | Adopted. Project code uses ordinary `width`, not `width_cjk`. The direct dependency enables `cjk` explicitly to preserve the prior resolved feature graph. |
 
 ## No production dependency yet
 
@@ -89,8 +89,36 @@ synchronization or terminal message semantics.
 
 ## Adopted terminal graph
 
-The terminal graph adds `vt100` 0.16.2, `vte` 0.15.0, `unicode-width` 0.2.2,
-`arrayvec` 0.7.8, `itoa` 1.0.18, and `memchr` 2.8.3. It has no native library,
+### 2026-09-25 U+FFFD source repair
+
+LeanTTY and a local stock-server fixture reproduced a defect in `vt100` 0.16.2:
+its parser sent valid U+FFFD to `unhandled_char` without updating the screen.
+Ignoring the callback would have left the authoritative screen and cursor
+wrong. No published `vt100` release contains a verified correction for this
+case. The crate now compiles the audited MIT-licensed 0.16.2 screen modules
+privately from [`src/vt100`](../src/vt100/PATCH.md), with one source-line change
+that prints U+FFFD normally and leaves C1 behavior intact. This adds no crate,
+native build, `unsafe` code, or public terminal type.
+
+The external `vt100` dependency is removed. Its existing `itoa` 1.0.18
+dependency becomes direct, while `vte` 0.15.0 and `unicode-width` 0.2.2 remain
+direct. The `cjk` feature is set explicitly to preserve the prior resolved
+Unicode-width behavior. The source files, upstream MIT license, and patch note
+are included in the single `mosh-client` source package. A published upstream
+fix can replace this copy after the same tests and package checks pass.
+
+The copied Rust files were compared against the cached 0.16.2 crate: only
+`perform.rs` differs, by the stated one-line condition. `cargo deny check`
+passed the resolved graph, the imported modules contain no `unsafe`, and Cargo
+packaged the source and rebuilt its unpacked crate on 2026-09-25. Stable and
+Rust 1.88 strict Clippy and all-target tests passed; the stock-server U+FFFD
+fixture passed separately. The installed stable toolchain built the ARM64 OHOS
+release library. Rust 1.88 lacks that installed target, so the OHOS result is
+not a Rust 1.88 target build.
+
+The original terminal graph added `vt100` 0.16.2, `vte` 0.15.0,
+`unicode-width` 0.2.2, `arrayvec` 0.7.8, `itoa` 1.0.18, and `memchr` 2.8.3.
+It has no native library,
 build script, runtime download, telemetry, or new `unsafe` block. `vt100` has
 MSRV 1.70 and `vte` has MSRV 1.62.1, both below the 0.1.0 Rust 1.88 floor.
 

@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## 0.1.2
+
+- Preserve valid U+FFFD and other printable Unicode from stock Mosh terminal
+  updates without treating the replacement character as a protocol failure.
+- Reject DEL explicitly instead of allowing it to disappear from a terminal
+  update. Keep malformed UTF-8 and unsupported control failures explicit.
+- Verify selected Latin, CJK, emoji, combining, and replacement text through
+  the public Session against stock `mosh-server` 1.4.0.
+
 ## 0.1.1
 
 - Preserve an established Session when HarmonyOS temporarily reports

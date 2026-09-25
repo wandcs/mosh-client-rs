@@ -100,6 +100,21 @@ mod tests {
     }
 
     #[test]
+    fn replacement_character_survives_full_and_incremental_repaint() {
+        let previous = apply(&TerminalState::new(80, 24).unwrap(), b"BEFORE-");
+        let current = apply(&previous, "\u{fffd}-AFTER".as_bytes());
+        let full = TerminalPainter::full(&current).unwrap();
+        assert!(full.windows(3).any(|bytes| bytes == "\u{fffd}".as_bytes()));
+        assert_repaints(&current, &full);
+
+        let mut projection = vt100::Parser::new(24, 80, 0);
+        projection.process(&TerminalPainter::full(&previous).unwrap());
+        projection.process(&TerminalPainter::incremental(&previous, &current).unwrap());
+        assert_eq!(projection.screen().contents(), "BEFORE-\u{fffd}-AFTER");
+        assert_eq!(projection.screen().cursor_position(), (0, 14));
+    }
+
+    #[test]
     fn sparse_blank_rows_never_confuse_incremental_repaint() {
         let initial = TerminalState::new(40, 20).unwrap();
         let frames = [
